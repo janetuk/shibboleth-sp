@@ -7,3 +7,5 @@ Makefile
 Debug
 *.plg
 Release
+*.dep
+*.mak
