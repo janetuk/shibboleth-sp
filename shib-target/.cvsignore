@@ -9,3 +9,4 @@ Release
 *.plg
 *.mak
 *.dep
+shib-paths.h
