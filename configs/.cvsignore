@@ -5,4 +5,5 @@ apache2.config
 shar.logger
 shire.logger
 shibboleth.ini
+shibboleth.xml
 creds.xml
