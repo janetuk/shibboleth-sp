@@ -5,3 +5,5 @@ Makefile
 *.lo
 *.la
 *.plg
+Release
+Debug

@@ -6,3 +6,5 @@ Makefile
 *.la
 *.aps
 *.plg
+Release
+Debug

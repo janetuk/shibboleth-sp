@@ -6,3 +6,4 @@ Makefile
 *.la
 Debug
 *.plg
+Release
