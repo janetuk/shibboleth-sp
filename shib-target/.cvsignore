@@ -8,3 +8,4 @@ Debug
 Release
 *.plg
 *.mak
+*.dep
