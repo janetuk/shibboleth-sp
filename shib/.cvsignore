@@ -3,6 +3,7 @@ Makefile
 .libs
 .deps
 *.lo
+*.loT
 *.la
 Debug
 Release
