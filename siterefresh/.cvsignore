@@ -6,3 +6,5 @@ siterefresh
 *.plg
 Debug
 Release
+*.dep
+*.mak
