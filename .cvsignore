@@ -12,3 +12,5 @@ Makefile
 depcomp
 configure
 libtool
+*.opt
+*.ncb
