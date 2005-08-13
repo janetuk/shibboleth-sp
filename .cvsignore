@@ -16,3 +16,4 @@ libtool
 *.ncb
 shibboleth.spec
 .settings
+*.suo
