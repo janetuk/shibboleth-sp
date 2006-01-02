@@ -12,3 +12,4 @@ Release
 mod_shib20___Win32_Debug
 mod_shib20___Win32_Release
 *.aps
+*.user

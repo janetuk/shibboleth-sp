@@ -4,3 +4,4 @@ Debug
 *.dep
 *.mak
 *.aps
+*.user
