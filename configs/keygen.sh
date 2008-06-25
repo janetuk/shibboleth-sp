@@ -33,7 +33,7 @@ if  [ -s $OUT/sp-key.pem -o -s $OUT/sp-cert.pem ] ; then
 fi
 
 if [ -z "$FQDN" ] ; then
-    FQDN=`hostname`
+    FQDN=`hostname --fqdn`
 fi
 
 if [ -z "$YEARS" ] ; then
