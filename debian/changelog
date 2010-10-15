@@ -1,3 +1,9 @@
+shibboleth-sp2 (2.3.1+dfsg-3) UNRELEASED; urgency=low
+
+  * Add myself to Uploaders.
+
+ -- Faidon Liambotis <paravoid@debian.org>  Fri, 15 Oct 2010 21:04:44 +0300
+
 shibboleth-sp2 (2.3.1+dfsg-2) unstable; urgency=low
 
   * Modify shib-keygen to create the new certificate key group-readable by
