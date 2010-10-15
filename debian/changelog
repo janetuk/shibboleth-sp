@@ -1,6 +1,7 @@
 shibboleth-sp2 (2.3.1+dfsg-3) UNRELEASED; urgency=low
 
   * Add myself to Uploaders.
+  * Enable and ship memcache-store.
 
  -- Faidon Liambotis <paravoid@debian.org>  Fri, 15 Oct 2010 21:04:44 +0300
 

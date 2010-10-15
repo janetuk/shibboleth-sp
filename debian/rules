@@ -57,6 +57,7 @@ configure-stamp:
 	    --sysconfdir=/etc --libexecdir=/usr/lib/shibboleth \
 	    --localstatedir=/var --enable-apache-22 \
 	    --with-apxs2=/usr/bin/apxs2 --disable-dependency-tracking \
+	    --with-memcached \
 	    $(SYSTEM)
 	touch $@
 
