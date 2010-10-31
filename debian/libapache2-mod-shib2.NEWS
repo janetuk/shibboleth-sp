@@ -1,0 +1,55 @@
+shibboleth-sp2 (2.3+dfsg-1) unstable; urgency=high
+
+  As of this release, running shibd as a non-root user is supported and
+  recommended to limit the impact of any potential security issues.  The
+  package will create a dedicated _shibd user on installation for that
+  purpose.
+
+  In order for shibd to run as user _shibd instead of as root, user _shibd
+  must have read access to the private key of the server.  The easiest way
+  is to make the private key, normally /etc/shibboleth/sp-key.pem, owned
+  by root and readable by group _shibd:
+
+      chown root:_shibd /etc/shibboleth/sp-key.pem
+      chmod 640 /etc/shibboleth/sp-key.pem
+
+  The init script attempts to detect, when starting up shibd, whether it
+  can read the private key specified in the configuration and, if not,
+  falls back on running shibd as root, as was done in previous versions of
+  this package.
+
+ -- Russ Allbery <rra@debian.org>  Tue, 10 Nov 2009 16:48:03 -0800
+
+shibboleth-sp2 (2.2.1+dfsg-2) unstable; urgency=low
+
+  There are several changes to the configuration syntax and defaults in
+  Shibboleth 2.2, one of which produce deprecation warnings on startup
+  until /etc/shibboleth/shibboleth2.xml is updated.
+
+  The most significant change is that <Rule> tags in the <Policy> element
+  should be changed to <PolicyRule> and a new policy rule added:
+
+      <PolicyRule type="Conditions">
+          <PolicyRule type="Audience"/>
+          <!-- Enable Delegation rule to permit delegated access. -->
+          <!-- <PolicyRule type="Delegation"/> -->
+      </PolicyRule>
+
+  See:
+
+  https://spaces.internet2.edu/display/SHIB2/NativeSPConfigurationChanges
+
+  for all the details and further explanation.
+
+ -- Russ Allbery <rra@debian.org>  Tue, 15 Sep 2009 20:44:26 -0700
+
+shibboleth-sp2 (2.0.dfsg1-4) unstable; urgency=low
+
+  With this release, the Apache module configuration fragments in
+  /etc/apache2/mods-available have been renamed to shib2.* from shib.* to
+  avoid conflicts with libapache2-mod-shib.  If you had any customizations
+  in /etc/apache2/mods-available/shib.load, you will need to move them to
+  /etc/apache2/mods-available/shib2.load.
+
+ -- Russ Allbery <rra@debian.org>  Tue, 14 Oct 2008 20:52:20 -0700
+

@@ -1,0 +1,9 @@
+debian/tmp/usr/bin
+debian/tmp/usr/sbin
+debian/tmp/etc/shibboleth
+debian/tmp/usr/lib/shibboleth
+
+debian/shib2.load	etc/apache2/mods-available
+
+doc/logo.jpg	usr/share/shibboleth
+doc/main.css	usr/share/shibboleth

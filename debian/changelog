@@ -1,0 +1,198 @@
+shibboleth-sp2 (2.3.1+dfsg-2) unstable; urgency=low
+
+  * Modify shib-keygen to create the new certificate key group-readable by
+    _shibd and not world-readable.  (Closes: #571631)
+  * Force source format 1.0 for now since it makes backporting easier.
+  * Update debhelper compatibility level to V7.
+    - Use dh_prep instead of dh_clean -k.
+  * Update standards version to 3.8.4 (no changes required).
+
+ -- Russ Allbery <rra@debian.org>  Sat, 15 May 2010 15:25:12 -0700
+
+shibboleth-sp2 (2.3.1+dfsg-1) unstable; urgency=low
+
+  * New upstream release.
+    - Don't sign messages for SOAP requests twice.
+    - Correctly generate metadata in the artifact resolution handler.
+    - Artifact resolution should return empty success on errors.
+    - Fixed crash in backchannel global logout.
+    - Fix duplicate indexes in metadata generation when multiple base URLs
+      are supplied.
+    - Correctly decrypt assertions in attribute responses.
+  * Apply upstream fix for shibd removing the PID file when called with
+    the -F option.  This prevents the check of certificate permissions in
+    the init script from removing the PID file of a running shibd.
+  * Add ${shlibs:Depends} to the libshibsp-dev package dependencies.
+  * Add ${misc:Depends} to all package dependencies.
+
+ -- Russ Allbery <rra@debian.org>  Sun, 03 Jan 2010 13:54:55 -0800
+
+shibboleth-sp2 (2.3+dfsg-1) unstable; urgency=high
+
+  [ Russ Allbery ]
+  * Urgency set to high for security fix.
+  * New upstream release.
+    - SECURITY: Partial fix for improper handling of URLs that could be
+      abused for script injection and other cross-site scripting attacks.
+      The complete fix also requires newer xmltooling and opensaml2
+      packages.  (Closes: #555608, CVE-2009-3300)
+    - Avoid shibd crash on dead memcache server.
+    - Pass the affiliation name to the session initiator.
+    - Correctly handle a bogus ACS.
+    - Allow overriding the URL that's passed to the DS.
+    - Add schema types for new attribute decoders introduced in 2.2.
+    - Handle success with partial logout in the logout UI code.
+    - Fix POST data preservation with empty parameters and empty forms.
+    - Fix SAML 1 specification of attributes in the query plugin.
+    - Shorten ePTId-type persistent identifiers.
+    - Use an ID rather than a whole doc reference for generated metadata.
+    - Fix spelling of scopeDelimiter in the configuration parser, making
+      the code and documentation match the schema.
+  * Rename library package for upstream SONAME bump.
+  * Tighten build and package dependencies on xmltooling and opensaml2 to
+    require the versions with the security fix.
+  * Fix watch file for the new version mangling.
+  * Improve documentation of DAEMON_OPTS in /etc/default/shibd.
+  * Remove unnecessary patches to upstream files regenerated during the
+    build from the source package diff.
+
+  [ Faidon Liambotis ]
+  * Run make install with NOKEYGEN=1 and stop rm-ing generated
+    certificates.  Fixes FTBFS.
+
+  [ Ferenc Wagner ]
+  * Run shibd as non-root.
+
+ -- Russ Allbery <rra@debian.org>  Wed, 11 Nov 2009 14:39:44 -0800
+
+shibboleth-sp2 (2.2.1+dfsg-2) unstable; urgency=low
+
+  * Change the libapache2-mod-shib2 section to httpd, matching override.
+  * Add a NEWS.Debian entry for libapache2-mod-shib2 that explains the
+    recommended configuration update for the 2.2 version.  Thanks, Scott
+    Cantor and Kristof BAJNOK.
+
+ -- Russ Allbery <rra@debian.org>  Wed, 09 Sep 2009 12:15:08 -0700
+
+shibboleth-sp2 (2.2.1+dfsg-1) unstable; urgency=high
+
+  * New upstream release.
+    - SECURITY: Fix improper handling of certificate names containing nul
+      characters.
+    - SECURITY: Correctly validate the use attribute of KeyDescriptors,
+      preventing use of a key for signing or for encryption if its use
+      field says it may not be used for that purpose.
+    - New shib-metagen script for generating Shibboleth SP metadata.
+    - Support preserving form data across user authentication.
+    - Support internal server redirection while maintaining protection.
+    - Fix incompatibility between lazy sessions and servlet containers.
+    - Fix some problems with dynamic metadata resolution.
+    - Fix incompatibility with mod_include.
+    - Fix single logout via SOAP.
+    - Fix shibd crash with invalid metadata.
+    - Fix crash in chaining attribute resolver.
+    - Avoid infinite loop on empty attribute mapped to REMOTE_USER.
+    - Fix handling of some Unicode data in relaystate data in URLs.
+    - Correctly return Success to LogoutRequest where appropriate.
+    - Avoid chunked encoding in back-channel calls.
+    - Correctly check Recipient values in assertions.
+    - Fix attributePrefix handling in some contexts.
+    - Fix generated metadata DiscoveryResponse.
+    - Fix handling of unsigned responses with encryption.
+    - Fix handling of InProcess property.
+  * Rename library package for upstream SONAME bump.
+  * Tighten build dependencies and schema package dependencies on
+    opensaml2 and xmltooling.
+  * Build against Xerces-C 3.0.
+  * Dynamically determine the Debian and upstream package versions for
+    get-orig-source from debian/changelog.
+  * Update libapache2-mod-shib2's README.Debian for changes to the
+    TestShib web pages.
+  * Use the automatically-extracted package version as the version number
+    for the man pages.
+  * Update standards version to 3.8.3.
+    - Create /var/run/shibboleth in the init script if it doesn't exist.
+    - Don't ship /var/run/shibboleth in the package.
+    - Remove /var/run/shibboleth in postrm if it exists.
+
+ -- Russ Allbery <rra@debian.org>  Mon, 07 Sep 2009 16:14:29 -0700
+
+shibboleth-sp2 (2.1.dfsg1-2) unstable; urgency=low
+
+  * Redo the variable quoting in doxygen.m4 so that configure can be
+    rebuilt with Autoconf 2.63.  (Closes: #518039)
+
+ -- Russ Allbery <rra@debian.org>  Tue, 03 Mar 2009 15:03:10 -0800
+
+shibboleth-sp2 (2.1.dfsg1-1) unstable; urgency=low
+
+  [ Russ Allbery ]
+  * New upstream version.
+    - New memory cache storage backend.
+    - Schema validation is now optional.
+    - Many bug fixes.
+  * Bump SONAME of libshibsp following upstream's versioning.
+  * Build-depend on libsaml2-dev >= 2.1 following the upstream spec file
+    and libxmltooling-dev 1.1 just in case (required by OpenSAML 2.1).
+  * Fix the name of the tarball created by get-orig-source.
+  * Logcheck rules.
+  * Tighten the dependency versioning; the 2.1 SP library requires the
+    2.1 schemas from the Shibboleth SP and OpenSAML and the 1.1 schemas
+    from XMLTooling.
+  * Remove duplicate Section field for libapache2-mod-shib2.
+
+  [ Ferenc Wagner ]
+  * Follow the libshibsp1->2 package rename in the dh_makeshlibs invocation.
+  * Remove the Shibboleth minor version number from README.Debian.
+  * Comment out the reference to WS-Trust.xsd from the catalog.xml file in
+    shibboleth-sp2-schemas and document how to enable it again.
+
+ -- Russ Allbery <rra@debian.org>  Fri, 27 Feb 2009 20:54:51 -0800
+
+shibboleth-sp2 (2.0.dfsg1-4) unstable; urgency=low
+
+  [ Ferenc Wagner ]
+  * Rename debian/shib.load to debian/shib2.load to avoid clashing with the
+    libapache2-mod-shib package.  Otherwise its Apache config file breaks our
+    module.
+  * Add directory /var/log/shibboleth to libapache2-mod-shib2 (thanks to Peter
+    Schober for noticing)
+
+  [ Russ Allbery ]
+  * Add a postinst to disable the old configuration on upgrade and enable
+    the module if it had been enabled under the old configuration name.
+  * Wait for shibd to exit on stop or restart.  This fixes a bug in
+    restart that could lead to no new shibd being started because the old
+    one had not yet exited.
+  * Fix a syntax error in the shibd man page.
+
+ -- Russ Allbery <rra@debian.org>  Tue, 14 Oct 2008 21:47:36 -0700
+
+shibboleth-sp2 (2.0.dfsg1-3) unstable; urgency=low
+
+  [ Ferenc Wagner ]
+  * Avoid brace expansion in debian/rules, dash does not like it.
+    (Closes: #493408)
+
+  [ Russ Allbery ]
+  * Add logcheck rules to ignore some of the routine messages from the
+    Apache module.  This only covers startup and teardown; more will
+    need to be added.
+  * Fix watch file for new upstream tarball naming.
+
+ -- Russ Allbery <rra@debian.org>  Tue, 19 Aug 2008 19:04:35 -0700
+
+shibboleth-sp2 (2.0.dfsg1-2) unstable; urgency=low
+
+  * Apply upstream fix for variable sizes in the ODBC code.  Fixes a
+    FTBFS on 64-bit platforms.  (Closes: #492101)
+
+ -- Russ Allbery <rra@debian.org>  Thu, 24 Jul 2008 08:44:50 -0700
+
+shibboleth-sp2 (2.0.dfsg1-1) unstable; urgency=low
+
+  [ Ferenc Wágner ]
+  * Initial release (Closes: #480290)
+
+ -- Russ Allbery <rra@debian.org>  Wed, 25 Jun 2008 20:06:10 -0700
+

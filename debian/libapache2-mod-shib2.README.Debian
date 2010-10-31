@@ -1,0 +1,149 @@
+                        Shibboleth 2 SP for Debian
+
+Introduction
+
+  This package provides the Shibboleth Apache module and accompanying
+  daemon for a service provider.  In Shibboleth terminology, this is a web
+  server serving some content that should be secured via Shibboleth.  In
+  order for someone to access protected content from a Shibboleth SP, they
+  will have to authenticate to a Shibboleth IdP (Identity Provider),
+  either one that the Shibboleth SP points to directly or one that is part
+  of a federation that is trusted by the Shibboleth SP.
+
+  This is the Shibboleth 2 version of the SP.  For the 1.x version of
+  the Shibboleth SP (if it is still available), see libapache-mod-shib.
+
+Installation and Configuration
+
+  After installing this package, the module is available but not enabled.
+  It's not enabled automatically since some configuration is required
+  before it will work (at least creating a certificate for the SP to use
+  to authenticate to IdPs).
+
+  To generate a self-signed certificate for the Shibboleth SP, run
+  shib-keygen.  See its manual page for more information.  This may or may
+  not be what you want to do depending on which federation you plan on
+  joining; some federations may want you to follow other procedures for
+  generating a certificate.
+
+  The default error messages from Shibboleth are located in
+  /etc/shibboleth/*.html.  The paths to those error messages are
+  configured in /etc/shibboleth/shibboleth2.xml in the <Errors> tag.  If
+  you customize them, you may want to copy them somewhere else and change
+  /etc/shibboleth/shibboleth2.xml to point to the new locations.  Also in
+  that <Errors> tag you can set the URLs to the logo and style sheet used
+  by the default errors.  If you want to use the default URL (under
+  /shibboleth-sp), add this to your Apache configuration:
+
+    <Location /shibboleth-sp>
+        Allow from all
+    </Location>
+    Alias /shibboleth-sp/main.css /usr/share/shibboleth/main.css
+    Alias /shibboleth-sp/logo.jpg /usr/share/shibboleth/logo.jpg
+
+  For Shibboleth to work properly, you will need to extensively customize
+  /etc/shibboleth/shibboleth2.xml for your site.  In particular, the
+  <ApplicationDefaults> section will have to be customized for the
+  federations your SP will trust and the <CredentialResolver> section of
+  <Applications> needs to list the credentials that your SP will use to
+  authenticate when communicating with IdPs.  Your local site may provide
+  a standard shibboleth2.xml for you to use.
+
+  Finally, you will want to protect some web content with Shibboleth.  The
+  most basic configuration is:
+
+    <Location /secure>
+        AuthType shibboleth
+        ShibRequestSetting requireSession 1
+        require valid-user
+    </Location>
+
+  for some <Location>, <Directory>, or <Files> block.  You can also put
+  similar code in an .htaccess file.  This will require authorization
+  using the default federation defined in /etc/shibboleth/shibboleth2.xml.
+
+Changes in Debian Package
+
+  The logging configuration for the native.log file has been changed to
+  use syslog, since the upstream default tries to write to a file that
+  Apache has no privileges to write to.  See /etc/shibboleth/native.logger
+  for more details.  If you want the other parts of Shibboleth to also log
+  to syslog, change the other /etc/shibboleth/*.logger files similarly.
+
+  The WS-Trust.xsd schema, which is needed if you use the ADFS support
+  and turn on schema validation, was removed from the Debian package for
+  license reasons.  To enable it again, do the following:
+
+    1. Download the original source from
+       http://shibboleth.internet2.edu/downloads/shibboleth/cppsp/latest/
+
+    2. Extract schemas/WS-Trust.xsd to some convenient location, for
+       example to /etc/shibboleth/WS-Trust.xsd.
+
+    3. Copy /usr/share/xml/shibboleth/catalog.xml into /etc/shibboleth.
+
+    4. Uncomment the WS-Trust line and set its uri attribute:
+       <system systemId="http://schemas.xmlsoap.org/ws/2005/02/trust"
+               uri="/etc/shibboleth/WS-Trust.xsd"/>
+
+    5. Edit /etc/default/shibd to contain
+       DAEMON_OPTS="$DAEMON_OPTS -x /etc/shibboleth/catalog.xml:/usr/share/xml/opensaml/saml20-catalog.xml:/usr/share/xml/xmltooling/catalog.xml"
+
+    6. Restart the Shibboleth daemon: /etc/init.d/shibd restart.
+
+Testing with TestShib
+
+  If you don't have a local Shibboleth Federation you can easily join but
+  want to test your Shibboleth installation, you can use the TestShib
+  federation (which exists primarily for this purpose).  To do this, use
+  the following instructions (but test them against the details on the
+  testshib.org web pages in case anything has changed):
+
+  1. Go to <http://testshib.org/>, click on Register, and log in with
+     either OpenIDP or ProtectNetwork.  If you do not have an identity
+     with either, create one following the links on that page.
+
+  2. Click on New Service Provider (unless you've already created an entry
+     for this host, in which case select Edit and reuse it).  Enter your
+     hostname, your public certificate, and your first and last name, and
+     then click on Continue.  Verify the information and click on Submit.
+
+  3. Now select Configure, scroll down to Service Provider Configuration,
+     choose Other for the platform, enter your hostname, and click on
+     Create Me.  Save the resulting configuration file as
+     /etc/shibboleth/shibboleth2.xml.
+
+  4. Create some part of your web site that's protected with Shibboleth as
+     described above, restart Apache with apache2ctl restart, restart
+     shibd with /etc/init.d/shibd restart, and then go to that URL.  You
+     should be redirected to the testshib.org IdP, and then get a basic
+     auth dialog box prompting for a username and password.  Enter
+     "myself" and "myself".  You should now be redirected back to your
+     protected page.  The best test page to use is a CGI script that
+     prints out the environment; you can then confirm that you see the
+     Shibboleth attributes as environment variables.  If this doesn't work
+     immediately, wait a few minutes and try again; sometimes the
+     testshib.org metadata takes a little bit to update.
+
+  These directions should work as of June 2008, but note that the
+  testshib.org service may have changed since then.  TestShib is useful
+  *only* for testing, not for any production use.  Those of us who have
+  worked on the Debian package are not affiliated with testshib.org, just
+  personally find it useful, and make no guarantees that it will work
+  properly.  You should read over the shibboleth2.xml file that you
+  download from testshib.org before using it to make sure that there's
+  nothing strange in it.
+
+  If the above instructions don't work or there are changes in the
+  TestShib service, please file a bug against the Debian
+  libapache2-mod-shib2 package and let us know.
+
+Further Information
+
+  For further installation information, see:
+
+    https://spaces.internet2.edu/display/SHIB2/Home
+
+  and in particular the "Configuration" link.
+
+ -- Russ Allbery <rra@debian.org>, Tue, 10 Nov 2009 15:06:57 -0800
