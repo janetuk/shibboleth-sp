@@ -1,3 +1,9 @@
+shibboleth-sp2 (2.4~aa-1) unstable; urgency=low
+
+  * new upstream prelease
+
+ -- Sam Hartman <hartmans@project-moonshot.org>  Sun, 31 Oct 2010 20:24:48 -0400
+
 shibboleth-sp2 (2.3.1+dfsg-2) unstable; urgency=low
 
   * Modify shib-keygen to create the new certificate key group-readable by
