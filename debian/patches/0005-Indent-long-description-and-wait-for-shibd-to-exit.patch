@@ -1,0 +1,50 @@
+From 57edd69e2877a18e20da65dc9cd79bf09679890b Mon Sep 17 00:00:00 2001
+From: Russ Allbery <rra@debian.org>
+Date: Tue, 14 Oct 2008 20:58:36 -0700
+Subject: Indent long description and wait for shibd to exit
+
+Rather than just sending shibd a signal and assuming success, wait for it
+to exit, since it can take some time to stop after a TERM signal.  This
+should fix restart problems where shibd wasn't started because the prior
+version had not exited yet.
+---
+ configs/shibd-debian.in |   11 +++++------
+ 1 files changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/configs/shibd-debian.in b/configs/shibd-debian.in
+index 59f0995..4c7894d 100644
+--- a/configs/shibd-debian.in
++++ b/configs/shibd-debian.in
+@@ -7,8 +7,8 @@
+ # Default-Stop: 0 1 6
+ # Short-Description: Shibboleth 2 Service Provider Daemon
+ # Description: Starts the separate daemon used by the Shibboleth
+-# Apache module to manage sessions and to retrieve
+-# attributes from Shibboleth Identity Providers.
++#              Apache module to manage sessions and to retrieve
++#              attributes from Shibboleth Identity Providers.
+ ### END INIT INFO
+ #
+ # Written by Quanah Gibson-Mount <quanah@stanford.edu>
+@@ -66,15 +66,14 @@ start)
+ stop)
+     echo -n "Stopping $DESC: "
+     start-stop-daemon --stop --quiet --pidfile $PIDFILE \
+-        --exec $DAEMON
++        --retry TERM/30/KILL/5 --exec $DAEMON
+     echo "$NAME."
+     ;;
+ restart|force-reload)
+     echo -n "Restarting $DESC: "
+     start-stop-daemon --stop --quiet --pidfile $PIDFILE \
+-        --exec $DAEMON
+-    sleep 1
+-    start-stop-daemon --start --quiet \
++        --retry TERM/30/KILL/5 --exec $DAEMON
++    start-stop-daemon --background --start --quiet \
+         --pidfile $PIDFILE --exec $DAEMON -- $DAEMON_OPTS
+     echo "$NAME."
+     ;;
+-- 
+1.7.1
+

@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 
 SAML1=0
 SAML2=0

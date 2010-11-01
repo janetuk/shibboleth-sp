@@ -1,0 +1,38 @@
+From 63ca64f50dd74e5454027fdb0a62535d5cd05ddc Mon Sep 17 00:00:00 2001
+From: Russ Allbery <rra@debian.org>
+Date: Fri, 21 Aug 2009 11:40:16 -0700
+Subject: Update standards version to 3.8.3
+
+* Update standards version to 3.8.3.
+  - Create /var/run/shibboleth in the init script if it doesn't exist.
+---
+ configs/shibd-debian.in |    6 ++++++
+ 1 files changed, 6 insertions(+), 0 deletions(-)
+
+diff --git a/configs/shibd-debian.in b/configs/shibd-debian.in
+index 4c7894d..bcfd52b 100644
+--- a/configs/shibd-debian.in
++++ b/configs/shibd-debian.in
+@@ -53,6 +53,9 @@ DAEMON_OPTS="$DAEMON_OPTS -w 30"
+ 
+ case "$1" in
+ start)
++    # Ensure @-PKGRUNDIR-@ exists.  /var/run may be on a tmpfs file system.
++    [ -d '@-PKGRUNDIR-@' ] || mkdir -p '@-PKGRUNDIR-@'
++
+     # Don't start shibd if NO_START is set.
+     if [ "$NO_START" = 1 ] ; then
+         echo "Not starting $DESC (see /etc/default/$NAME)"
+@@ -70,6 +73,9 @@ stop)
+     echo "$NAME."
+     ;;
+ restart|force-reload)
++    # Ensure @-PKGRUNDIR-@ exists.  /var/run may be on a tmpfs file system.
++    [ -d '@-PKGRUNDIR-@' ] || mkdir -p '@-PKGRUNDIR-@'
++
+     echo -n "Restarting $DESC: "
+     start-stop-daemon --stop --quiet --pidfile $PIDFILE \
+         --retry TERM/30/KILL/5 --exec $DAEMON
+-- 
+1.7.1
+

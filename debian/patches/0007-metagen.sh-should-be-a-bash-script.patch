@@ -1,0 +1,24 @@
+From a00420873857cc751be2d862e17c86dc584bdd47 Mon Sep 17 00:00:00 2001
+From: Russ Allbery <rra@debian.org>
+Date: Mon, 7 Sep 2009 14:32:11 -0700
+Subject: metagen.sh should be a bash script
+
+metagen.sh uses bash-specific features (arrays) and should therefore
+start with #!/bin/bash.
+---
+ configs/metagen.sh |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/configs/metagen.sh b/configs/metagen.sh
+index 3c1efba..4223403 100755
+--- a/configs/metagen.sh
++++ b/configs/metagen.sh
+@@ -1,4 +1,4 @@
+-#! /bin/sh
++#! /bin/bash
+ 
+ SAML1=0
+ SAML2=0
+-- 
+1.7.1
+

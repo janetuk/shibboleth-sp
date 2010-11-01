@@ -1,0 +1,29 @@
+From b88c4640f2c4a1e944e5f3d8b4aeae15e768c5cd Mon Sep 17 00:00:00 2001
+From: Sam Hartman <hartmans@debian.org>
+Date: Sun, 31 Oct 2010 19:52:01 -0400
+Subject: Debian directory paths
+
+Use non-versioned doc directories.
+Use apache2 log dir
+---
+ configs/Makefile.am |    4 ++--
+ 1 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/configs/Makefile.am b/configs/Makefile.am
+index 3b3f8de..91bf7f8 100644
+--- a/configs/Makefile.am
++++ b/configs/Makefile.am
+@@ -4,8 +4,8 @@ AUTOMAKE_OPTIONS = foreign
+ 
+ pkglibdir = ${libdir}/@PACKAGE@
+ pkglogdir = ${localstatedir}/log/@PACKAGE@
+-pkgdocdir = $(datadir)/doc/@PACKAGE@-@PACKAGE_VERSION@
+-shirelogdir = ${localstatedir}/log/httpd
++pkgdocdir = $(datadir)/doc/@PACKAGE@
++shirelogdir = ${localstatedir}/log/apache2
+ pkgxmldir = $(datadir)/xml/@PACKAGE@
+ pkgrundir = $(localstatedir)/run/@PACKAGE@
+ pkgsysconfdir = $(sysconfdir)/@PACKAGE@
+-- 
+1.7.1
+

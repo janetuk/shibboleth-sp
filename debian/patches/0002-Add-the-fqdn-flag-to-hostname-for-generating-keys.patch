@@ -1,0 +1,28 @@
+From 94fb923c37a4d0e8a2ba9dcbbacd387200126f68 Mon Sep 17 00:00:00 2001
+From: Russ Allbery <rra@debian.org>
+Date: Wed, 25 Jun 2008 16:36:04 -0700
+Subject: Add the --fqdn flag to hostname for generating keys
+
+This is Debian-specific (or at least specific to systems with a hostname
+that support this flag), but will produce more reliable names for an SSL
+certificate.
+---
+ configs/keygen.sh |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/configs/keygen.sh b/configs/keygen.sh
+index 4ee69f6..9183e10 100755
+--- a/configs/keygen.sh
++++ b/configs/keygen.sh
+@@ -33,7 +33,7 @@ if  [ -s $OUT/sp-key.pem -o -s $OUT/sp-cert.pem ] ; then
+ fi
+ 
+ if [ -z "$FQDN" ] ; then
+-    FQDN=`hostname`
++    FQDN=`hostname --fqdn`
+ fi
+ 
+ if [ -z "$YEARS" ] ; then
+-- 
+1.7.1
+

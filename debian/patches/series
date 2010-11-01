@@ -1,0 +1,9 @@
+0001-Debian-directory-paths.patch
+0002-Add-the-fqdn-flag-to-hostname-for-generating-keys.patch
+0003-Move-keygen.sh-into-usr-sbin-and-clean-up-etc-shibbo.patch
+0004-Send-the-native-log-to-syslog.patch
+0005-Indent-long-description-and-wait-for-shibd-to-exit.patch
+0006-Update-standards-version-to-3.8.3.patch
+0007-metagen.sh-should-be-a-bash-script.patch
+0008-Run-shibd-as-non-root-On-installation-create-a-new-s.patch
+0009-autoreconf.patch

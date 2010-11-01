@@ -1,0 +1,97 @@
+From a8a3d964a0ed06d6bc0c73995ae8516d90ae6d0a Mon Sep 17 00:00:00 2001
+From: Ferenc Wagner <wferi@niif.hu>
+Date: Fri, 18 Sep 2009 13:05:09 +0200
+Subject: Run shibd as non-root On installation, create a new system user (_shibd) and run shibd as this user if possible.
+
+Additional documentation and formatting for DAEMON_USER support
+
+Add a comment to the init script explaining what's going on with the
+DAEMON_USER support and reformat to keep lines below 80 columns.
+---
+ configs/shibd-debian.in |   44 +++++++++++++++++++++++++++++++++++++-------
+ 1 files changed, 37 insertions(+), 7 deletions(-)
+
+diff --git a/configs/shibd-debian.in b/configs/shibd-debian.in
+index bcfd52b..c1a7d18 100644
+--- a/configs/shibd-debian.in
++++ b/configs/shibd-debian.in
+@@ -29,6 +29,7 @@ DAEMON=@-PREFIX-@/sbin/$NAME
+ SCRIPTNAME=/etc/init.d/$NAME
+ PIDFILE=@-PKGRUNDIR-@/$NAME.pid
+ DAEMON_OPTS=""
++DAEMON_USER=_shibd
+ 
+ # Force removal of socket
+ DAEMON_OPTS="$DAEMON_OPTS -f"
+@@ -51,18 +52,47 @@ DAEMON_OPTS="$DAEMON_OPTS -w 30"
+ # Get the setting of VERBOSE and other rcS variables.
+ [ -f /etc/default/rcS ] && . /etc/default/rcS
+ 
+-case "$1" in
+-start)
++prepare_environment () {
+     # Ensure @-PKGRUNDIR-@ exists.  /var/run may be on a tmpfs file system.
+     [ -d '@-PKGRUNDIR-@' ] || mkdir -p '@-PKGRUNDIR-@'
+ 
++    # If $DAEMON_USER is set, try to run shibd as that user.  However,
++    # versions of the Debian package prior to 2.3+dfsg-1 ran shibd as root,
++    # and the local administrator may not have made the server's private key
++    # readable by $DAEMON_USER.  We therefore test first by running shibd -t
++    # and looking for the error code indicating that the private key could not
++    # be read.  If we get that error, we fall back on running shibd as root.
++    if [ -n "$DAEMON_USER" ]; then
++        DIAG=$(su -s $DAEMON $DAEMON_USER -- -t $DAEMON_OPTS 2>/dev/null)
++        if [ $? = 0 ] ; then
++            # openssl errstr 200100D (hex for 33558541) says:
++            # error:0200100D:system library:fopen:Permission denied
++            ERROR='ERROR OpenSSL : error code: 33558541 '
++            if echo "$DIAG" | fgrep -q "$ERROR" ; then
++                unset DAEMON_USER
++                echo "$NAME warning: file permissions require running as root"
++            else
++                chown -Rh "$DAEMON_USER" '@-PKGRUNDIR-@' '@-PKGLOGDIR-@'
++            fi
++        else
++            unset DAEMON_USER
++            echo "$NAME error: unable to run config check as user $DAEMON_USER"
++        fi
++        unset DIAG
++    fi
++}
++
++case "$1" in
++start)
++    prepare_environment
++
+     # Don't start shibd if NO_START is set.
+     if [ "$NO_START" = 1 ] ; then
+         echo "Not starting $DESC (see /etc/default/$NAME)"
+         exit 0
+     fi
+     echo -n "Starting $DESC: "
+-    start-stop-daemon --start --quiet \
++    start-stop-daemon --start --quiet ${DAEMON_USER:+--chuid $DAEMON_USER} \
+         --pidfile $PIDFILE --exec $DAEMON -- $DAEMON_OPTS
+     echo "$NAME."
+     ;;
+@@ -73,13 +103,13 @@ stop)
+     echo "$NAME."
+     ;;
+ restart|force-reload)
+-    # Ensure @-PKGRUNDIR-@ exists.  /var/run may be on a tmpfs file system.
+-    [ -d '@-PKGRUNDIR-@' ] || mkdir -p '@-PKGRUNDIR-@'
++    prepare_environment
+ 
+     echo -n "Restarting $DESC: "
+     start-stop-daemon --stop --quiet --pidfile $PIDFILE \
+-        --retry TERM/30/KILL/5 --exec $DAEMON
+-    start-stop-daemon --background --start --quiet \
++        --exec $DAEMON
++    sleep 1
++    start-stop-daemon --start --quiet ${DAEMON_USER:+--chuid $DAEMON_USER} \
+         --pidfile $PIDFILE --exec $DAEMON -- $DAEMON_OPTS
+     echo "$NAME."
+     ;;
+-- 
+1.7.1
+

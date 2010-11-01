@@ -1,0 +1,45 @@
+From a996086f3af5bf225c6bd7301ba78dd0f53148fa Mon Sep 17 00:00:00 2001
+From: Russ Allbery <rra@debian.org>
+Date: Wed, 25 Jun 2008 16:59:15 -0700
+Subject: Move keygen.sh into /usr/sbin and clean up /etc/shibboleth
+
+Move the keygen.sh script into /usr/sbin/shib-keygen and add a man page
+for it since users may want to run it after installation.  Remove the
+keys generated as part of the build process, since they'll be for the
+build host and hence useless in the package.  Also remove an OS X
+configuration file.
+
+Modify keygen.sh to cd to /etc/shibboleth before doing anything so that
+its file paths will still be correct and comment the --fqdn change.
+
+debian/libapache2-mod-shib2.shibd.init is created as part of the build,
+so remove it in the clean target.
+---
+ configs/keygen.sh |    5 +++++
+ 1 files changed, 5 insertions(+), 0 deletions(-)
+
+diff --git a/configs/keygen.sh b/configs/keygen.sh
+index 9183e10..bb89e80 100755
+--- a/configs/keygen.sh
++++ b/configs/keygen.sh
+@@ -1,5 +1,9 @@
+ #! /bin/sh
+ 
++# Added for Debian.  The upstream version is installed in /etc/shibboleth and
++# for Debian we wanted to move it to /usr/bin, so change directories so that
++# it puts files in the correct location.
++cd /etc/shibboleth
+ while getopts h:u:g:o:e:y:bf c
+      do
+          case $c in
+@@ -32,6 +36,7 @@ if  [ -s $OUT/sp-key.pem -o -s $OUT/sp-cert.pem ] ; then
+     exit 0
+ fi
+ 
++# --fqdn flag added for Debian to generate better names for certificates.
+ if [ -z "$FQDN" ] ; then
+     FQDN=`hostname --fqdn`
+ fi
+-- 
+1.7.1
+
