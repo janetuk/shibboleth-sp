@@ -21,14 +21,16 @@
  */
 
 #include "internal.h"
-#include "Application.h"
 #include "exceptions.h"
+#include "Application.h"
+#include "GSSRequest.h"
 #include "ServiceProvider.h"
 #include "SPRequest.h"
 #include "handler/RemotedHandler.h"
 
 #include <algorithm>
 #include <xmltooling/unicode.h>
+#include <xercesc/util/Base64.hpp>
 
 #ifndef SHIBSP_LITE
 # include "util/CGIParser.h"
@@ -46,21 +48,43 @@ using namespace std;
 
 #ifndef SHIBSP_LITE
 namespace shibsp {
-    class SHIBSP_DLLLOCAL RemotedRequest : public virtual HTTPRequest 
+    class SHIBSP_DLLLOCAL RemotedRequest : 
+#ifdef HAVE_GSSAPI
+        public GSSRequest,
+#endif
+        public HTTPRequest
     {
         DDF& m_input;
         mutable CGIParser* m_parser;
         mutable vector<XSECCryptoX509*> m_certs;
+#ifdef HAVE_GSSAPI
+        mutable gss_ctx_id_t m_gss;
+#endif
     public:
-        RemotedRequest(DDF& input) : m_input(input), m_parser(nullptr) {}
+        RemotedRequest(DDF& input) : m_input(input), m_parser(nullptr)
+#ifdef HAVE_GSSAPI
+            , m_gss(GSS_C_NO_CONTEXT)
+#endif
+        {
+        }
+
         virtual ~RemotedRequest() {
             for_each(m_certs.begin(), m_certs.end(), xmltooling::cleanup<XSECCryptoX509>());
             delete m_parser;
+#ifdef HAVE_GSSAPI
+            if (m_gss != GSS_C_NO_CONTEXT) {
+                OM_uint32 minor;
+                gss_delete_sec_context(&minor, &m_gss, GSS_C_NO_BUFFER);
+            }
+#endif
         }
 
         // GenericRequest
         const char* getScheme() const {
             return m_input["scheme"].string();
+        }
+        bool isSecure() const {
+            return HTTPRequest::isSecure();
         }
         const char* getHostname() const {
             return m_input["hostname"].string();
@@ -93,6 +117,11 @@ namespace shibsp {
 
         const std::vector<XSECCryptoX509*>& getClientCertificates() const;
         
+#ifdef HAVE_GSSAPI
+        // GSSRequest
+        gss_ctx_id_t getGSSContext() const;
+#endif
+
         // HTTPRequest
         const char* getMethod() const {
             return m_input["method"].string();
@@ -177,6 +206,34 @@ const std::vector<XSECCryptoX509*>& RemotedRequest::getClientCertificates() cons
     return m_certs;
 }
 
+#ifdef HAVE_GSSAPI
+gss_ctx_id_t RemotedRequest::getGSSContext() const
+{
+    if (m_gss == GSS_C_NO_CONTEXT) {
+        const char* encoded = m_input["gss_context"].string();
+        if (encoded) {
+            xsecsize_t x;
+            XMLByte* decoded=Base64::decode(reinterpret_cast<const XMLByte*>(encoded), &x);
+            if (decoded) {
+                gss_buffer_desc importbuf;
+                importbuf.length = x;
+                importbuf.value = decoded;
+                OM_uint32 minor;
+                OM_uint32 major = gss_import_sec_context(&minor, &importbuf, &m_gss);
+                if (major != GSS_S_COMPLETE)
+                    m_gss = GSS_C_NO_CONTEXT;
+#ifdef SHIBSP_XERCESC_HAS_XMLBYTE_RELEASE
+                XMLString::release(&decoded);
+#else
+                XMLString::release((char**)&decoded);
+#endif
+            }
+        }
+    }
+    return m_gss;
+}
+#endif
+
 long RemotedResponse::sendResponse(std::istream& in, long status)
 {
     string msg;
@@ -228,6 +285,8 @@ void RemotedHandler::setAddress(const char* address)
     }
 }
 
+set<string> RemotedHandler::m_remotedHeaders;
+
 RemotedHandler::RemotedHandler()
 {
 }
@@ -238,6 +297,11 @@ RemotedHandler::~RemotedHandler()
     ListenerService* listener=conf.getServiceProvider()->getListenerService(false);
     if (listener && conf.isEnabled(SPConfig::OutOfProcess) && !conf.isEnabled(SPConfig::InProcess))
         listener->unregListener(m_address.c_str(),this);
+}
+
+void RemotedHandler::addRemotedHeader(const char* header)
+{
+    m_remotedHeaders.insert(header);
 }
 
 DDF RemotedHandler::wrap(const SPRequest& request, const vector<string>* headers, bool certs) const
@@ -257,13 +321,20 @@ DDF RemotedHandler::wrap(const SPRequest& request, const vector<string>* headers
     in.addmember("url").unsafe_string(request.getRequestURL());
     in.addmember("query").string(request.getQueryString());
 
-    if (headers) {
+    if (headers || !m_remotedHeaders.empty()) {
         string hdr;
         DDF hin = in.addmember("headers").structure();
-        for (vector<string>::const_iterator h = headers->begin(); h!=headers->end(); ++h) {
-            hdr = request.getHeader(h->c_str());
+        if (headers) {
+            for (vector<string>::const_iterator h = headers->begin(); h!=headers->end(); ++h) {
+                hdr = request.getHeader(h->c_str());
+                if (!hdr.empty())
+                    hin.addmember(h->c_str()).unsafe_string(hdr.c_str());
+            }
+        }
+        for (set<string>::const_iterator hh = m_remotedHeaders.begin(); hh != m_remotedHeaders.end(); ++hh) {
+            hdr = request.getHeader(hh->c_str());
             if (!hdr.empty())
-                hin.addmember(h->c_str()).unsafe_string(hdr.c_str());
+                hin.addmember(hh->c_str()).unsafe_string(hdr.c_str());
         }
     }
 
@@ -288,6 +359,40 @@ DDF RemotedHandler::wrap(const SPRequest& request, const vector<string>* headers
         }
 #endif
     }
+
+#ifdef HAVE_GSSAPI
+    const GSSRequest* gss = dynamic_cast<const GSSRequest*>(&request);
+    if (gss) {
+        gss_ctx_id_t ctx = gss->getGSSContext();
+        if (ctx != GSS_C_NO_CONTEXT) {
+            OM_uint32 minor;
+            gss_buffer_desc contextbuf;
+            contextbuf.length = 0;
+            contextbuf.value = nullptr;
+            OM_uint32 major = gss_export_sec_context(&minor, &ctx, &contextbuf);
+            if (major == GSS_S_COMPLETE) {
+                xsecsize_t len=0;
+                XMLByte* out=Base64::encode(reinterpret_cast<const XMLByte*>(contextbuf.value), contextbuf.length, &len);
+                if (out) {
+                    string ctx;
+                    ctx.append(reinterpret_cast<char*>(out), len);
+#ifdef SHIBSP_XERCESC_HAS_XMLBYTE_RELEASE
+                    XMLString::release(&out);
+#else
+                    XMLString::release((char**)&out);
+#endif
+                    in.addmember("gss_context").string(ctx.c_str());
+                }
+                else {
+                    request.log(SPRequest::SPError, "error while base64-encoding GSS context");
+                }
+            }
+            else {
+                request.log(SPRequest::SPError, "error while exporting GSS context");
+            }
+        }
+    }
+#endif
 
     return in;
 }

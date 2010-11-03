@@ -31,14 +31,16 @@
 # define _CRT_SECURE_NO_DEPRECATE 1
 #endif
 
+#include <shibsp/exceptions.h>
 #include <shibsp/AbstractSPRequest.h>
 #include <shibsp/AccessControl.h>
-#include <shibsp/exceptions.h>
+#include <shibsp/GSSRequest.h>
 #include <shibsp/RequestMapper.h>
 #include <shibsp/SPConfig.h>
 #include <shibsp/ServiceProvider.h>
 #include <shibsp/SessionCache.h>
 #include <shibsp/attribute/Attribute.h>
+
 #include <xercesc/util/XMLUniDefs.hpp>
 #include <xercesc/util/regx/RegularExpression.hpp>
 #include <xmltooling/XMLToolingConfig.h>
@@ -95,7 +97,10 @@ namespace {
     string g_unsetHeaderValue,g_spoofKey;
     bool g_checkSpoofing = true;
     bool g_catchAll = false;
-    static const char* g_UserDataKey = "_shib_check_user_";
+#ifndef SHIB_APACHE_13
+    char* g_szGSSContextKey = "mod_auth_gssapi:gss_ctx";
+#endif
+    static const char* g_UserDataKey = "urn:mace:shibboleth:Apache:shib_check_user";
 }
 
 /* Apache 2.2.x headers must be accumulated and set in the output filter.
@@ -294,10 +299,11 @@ extern "C" const char* shib_table_set(cmd_parms* parms, shib_dir_config* dc, con
     return nullptr;
 }
 
-/********************************************************************************/
-// Apache ShibTarget subclass(es) here.
 
 class ShibTargetApache : public AbstractSPRequest
+#if defined(HAVE_GSSAPI) && !defined(SHIB_APACHE_13)
+    , public GSSRequest
+#endif
 {
   bool m_handler;
   mutable string m_body;
@@ -574,6 +580,13 @@ public:
   }
   long returnDecline(void) { return DECLINED; }
   long returnOK(void) { return OK; }
+#if defined(HAVE_GSSAPI) && !defined(SHIB_APACHE_13)
+  gss_ctx_id_t getGSSContext() const {
+    gss_ctx_id_t ctx = GSS_C_NO_CONTEXT;
+    apr_pool_userdata_get((void**)&ctx, g_szGSSContextKey, m_req->pool);
+    return ctx;
+  }
+#endif
 };
 
 /********************************************************************************/
@@ -1028,17 +1041,18 @@ AccessControl::aclresult_t htAccessControl::authorized(const SPRequest& request,
             status = true;
         }
         else if (!strcmp(w,"user") && !remote_user.empty()) {
-            bool regexp=false,negate=false;
+            bool regexp = false;
             while (*t) {
-                w=ap_getword_conf(sta->m_req->pool,&t);
-                if (*w=='~') {
-                    regexp=true;
+                w = ap_getword_conf(sta->m_req->pool,&t);
+                if (*w == '~') {
+                    regexp = true;
                     continue;
                 }
-                else if (*w=='!') {
-                    negate=true;
-                    if (*(w+1)=='~')
-                        regexp=true;
+                else if (*w == '!') {
+                    // A negated rule presumes success unless a match is found.
+                    status = true;
+                    if (*(w+1) == '~')
+                        regexp = true;
                     continue;
                 }
 
@@ -1058,86 +1072,92 @@ AccessControl::aclresult_t htAccessControl::authorized(const SPRequest& request,
                             string("htaccess plugin caught exception while parsing regular expression (") + w + "): " + tmp.get());
                     }
                 }
-                else if (remote_user==w) {
+                else if (remote_user == w) {
                     match = true;
                 }
 
                 if (match) {
-                    // If we matched, then we're done with this rule either way and status is set to reflect the outcome.
-                    status = !negate;
+                    // If we matched, then we're done with this rule either way and we flip status to reflect the outcome.
+                    status = !status;
                     if (request.isPriorityEnabled(SPRequest::SPDebug))
                         request.log(SPRequest::SPDebug,
-                            string("htaccess: require user ") + (negate ? "rejecting (" : "accepting (") + remote_user + ")");
+                            string("htaccess: require user ") + (!status ? "rejecting (" : "accepting (") + remote_user + ")");
                     break;
                 }
             }
         }
         else if (!strcmp(w,"group")  && !remote_user.empty()) {
-            SH_AP_TABLE* grpstatus=nullptr;
+            SH_AP_TABLE* grpstatus = nullptr;
             if (sta->m_dc->szAuthGrpFile) {
                 if (request.isPriorityEnabled(SPRequest::SPDebug))
                     request.log(SPRequest::SPDebug,string("htaccess plugin using groups file: ") + sta->m_dc->szAuthGrpFile);
-                grpstatus=groups_for_user(sta->m_req,remote_user.c_str(),sta->m_dc->szAuthGrpFile);
+                grpstatus = groups_for_user(sta->m_req,remote_user.c_str(),sta->m_dc->szAuthGrpFile);
             }
 
-            bool negate=false;
             while (*t) {
-                w=ap_getword_conf(sta->m_req->pool,&t);
-                if (*w=='!') {
-                    negate=true;
+                w = ap_getword_conf(sta->m_req->pool,&t);
+                if (*w == '!') {
+                    // A negated rule presumes success unless a match is found.
+                    status = true;
                     continue;
                 }
 
                 if (grpstatus && ap_table_get(grpstatus,w)) {
-                    // If we matched, then we're done with this rule either way and status is set to reflect the outcome.
-                    status = !negate;
-                    request.log(SPRequest::SPDebug, string("htaccess: require group ") + (negate ? "rejecting (" : "accepting (") + w + ")");
+                    // If we matched, then we're done with this rule either way and we flip status to reflect the outcome.
+                    status = !status;
+                    request.log(SPRequest::SPDebug, string("htaccess: require group ") + (!status ? "rejecting (" : "accepting (") + w + ")");
                     break;
                 }
             }
         }
         else if (!strcmp(w,"authnContextClassRef") || !strcmp(w,"authnContextDeclRef")) {
             const char* ref = !strcmp(w,"authnContextClassRef") ? session->getAuthnContextClassRef() : session->getAuthnContextDeclRef();
-            bool regexp=false,negate=false;
-            while (ref && *t) {
-                w=ap_getword_conf(sta->m_req->pool,&t);
-                if (*w=='~') {
-                    regexp=true;
-                    continue;
-                }
-                else if (*w=='!') {
-                    negate=true;
-                    if (*(w+1)=='~')
+            if (ref && *ref) {
+                bool regexp = false;
+                while (ref && *t) {
+                    w = ap_getword_conf(sta->m_req->pool,&t);
+                    if (*w == '~') {
                         regexp=true;
-                    continue;
-                }
-
-                // Figure out if there's a match.
-                bool match = false;
-                if (regexp) {
-                    try {
-                        // To do regex matching, we have to convert from UTF-8.
-                        RegularExpression re(w);
-                        match = re.matches(ref);
+                        continue;
                     }
-                    catch (XMLException& ex) {
-                        auto_ptr_char tmp(ex.getMessage());
-                        request.log(SPRequest::SPError,
-                            string("htaccess plugin caught exception while parsing regular expression (") + w + "): " + tmp.get());
+                    else if (*w == '!') {
+                        // A negated rule presumes success unless a match is found.
+                        status = true;
+                        if (*(w+1)=='~')
+                            regexp = true;
+                        continue;
+                    }
+
+                    // Figure out if there's a match.
+                    bool match = false;
+                    if (regexp) {
+                        try {
+                            // To do regex matching, we have to convert from UTF-8.
+                            RegularExpression re(w);
+                            match = re.matches(ref);
+                        }
+                        catch (XMLException& ex) {
+                            auto_ptr_char tmp(ex.getMessage());
+                            request.log(SPRequest::SPError,
+                                string("htaccess plugin caught exception while parsing regular expression (") + w + "): " + tmp.get());
+                        }
+                    }
+                    else if (!strcmp(w,ref)) {
+                        match = true;
+                    }
+
+                    if (match) {
+                        // If we matched, then we're done with this rule either way and we flip status to reflect the outcome.
+                        status = !status;
+                        if (request.isPriorityEnabled(SPRequest::SPDebug))
+                            request.log(SPRequest::SPDebug,
+                                string("htaccess: require authnContext ") + (!status ? "rejecting (" : "accepting (") + ref + ")");
+                        break;
                     }
                 }
-                else if (!strcmp(w,ref)) {
-                    match = true;
-                }
-
-                if (match) {
-                    // If we matched, then we're done with this rule either way and status is set to reflect the outcome.
-                    status = !negate;
-                    if (request.isPriorityEnabled(SPRequest::SPDebug))
-                        request.log(SPRequest::SPDebug,
-                            string("htaccess: require authnContext ") + (negate ? "rejecting (" : "accepting (") + ref + ")");
-                    break;
-                }
+            }
+            else if (request.isPriorityEnabled(SPRequest::SPDebug)) {
+                request.log(SPRequest::SPDebug, "htaccess: require authnContext rejecting session with no context associated");
             }
         }
         else if (!session) {
@@ -1439,7 +1459,7 @@ static command_rec shire_cmds[] = {
    OR_AUTHCFG, TAKE1, "Set Shibboleth applicationId property for content"},
   {"ShibBasicHijack", (config_fn_t)ap_set_flag_slot,
    (void *) XtOffsetOf (shib_dir_config, bBasicHijack),
-   OR_AUTHCFG, FLAG, "Respond to AuthType Basic and convert to shibboleth"},
+   OR_AUTHCFG, FLAG, "(DEPRECATED) Respond to AuthType Basic and convert to shibboleth"},
   {"ShibRequireSession", (config_fn_t)ap_set_flag_slot,
    (void *) XtOffsetOf (shib_dir_config, bRequireSession),
    OR_AUTHCFG, FLAG, "Initiates a new session if one does not exist"},
@@ -1501,6 +1521,8 @@ module MODULE_VAR_EXPORT mod_shib = {
 
 #elif defined(SHIB_APACHE_20) || defined(SHIB_APACHE_22)
 
+//static const char * const authnPre[] = { "mod_gss.c", nullptr };
+
 extern "C" void shib_register_hooks (apr_pool_t *p)
 {
 #ifdef SHIB_DEFERRED_HEADERS
@@ -1511,7 +1533,14 @@ extern "C" void shib_register_hooks (apr_pool_t *p)
   ap_hook_post_read_request(shib_post_read, nullptr, nullptr, APR_HOOK_MIDDLE);
 #endif
   ap_hook_child_init(shib_child_init, nullptr, nullptr, APR_HOOK_MIDDLE);
-  ap_hook_check_user_id(shib_check_user, nullptr, nullptr, APR_HOOK_MIDDLE);
+  const char* prereq = getenv("SHIBSP_APACHE_PREREQ");
+  if (prereq && *prereq) {
+    const char* const authnPre[] = { prereq, nullptr };
+    ap_hook_check_user_id(shib_check_user, authnPre, nullptr, APR_HOOK_MIDDLE);
+  }
+  else {
+    ap_hook_check_user_id(shib_check_user, nullptr, nullptr, APR_HOOK_MIDDLE);
+  }
   ap_hook_auth_checker(shib_auth_checker, nullptr, nullptr, APR_HOOK_FIRST);
   ap_hook_handler(shib_handler, nullptr, nullptr, APR_HOOK_LAST);
   ap_hook_fixups(shib_fixups, nullptr, nullptr, APR_HOOK_MIDDLE);
@@ -1527,6 +1556,8 @@ static command_rec shib_cmds[] = {
         RSRC_CONF, "Path to shibboleth2.xml config file"),
     AP_INIT_TAKE1("ShibCatalogs", (config_fn_t)ap_set_global_string_slot, &g_szSchemaDir,
         RSRC_CONF, "Paths of XML schema catalogs"),
+    AP_INIT_TAKE1("ShibGSSKey", (config_fn_t)ap_set_global_string_slot, &g_szGSSContextKey,
+        RSRC_CONF, "Name of user data key containing GSS context established by GSS module"),
 
     AP_INIT_TAKE1("ShibURLScheme", (config_fn_t)shib_set_server_string_slot,
         (void *) offsetof (shib_server_config, szScheme),
@@ -1543,7 +1574,7 @@ static command_rec shib_cmds[] = {
         OR_AUTHCFG, "Set Shibboleth applicationId property for content"),
     AP_INIT_FLAG("ShibBasicHijack", (config_fn_t)ap_set_flag_slot,
         (void *) offsetof (shib_dir_config, bBasicHijack),
-        OR_AUTHCFG, "Respond to AuthType Basic and convert to shibboleth"),
+        OR_AUTHCFG, "(DEPRECATED) Respond to AuthType Basic and convert to shibboleth"),
     AP_INIT_FLAG("ShibRequireSession", (config_fn_t)ap_set_flag_slot,
         (void *) offsetof (shib_dir_config, bRequireSession),
         OR_AUTHCFG, "Initiates a new session if one does not exist"),

@@ -1,10 +1,11 @@
-AC_PREREQ([2.67])
+AC_PREREQ([2.50])
 AC_INIT([shibboleth],[2.4],[https://bugs.internet2.edu/],[shibboleth])
 AC_CONFIG_SRCDIR(shibsp)
 AC_CONFIG_AUX_DIR(build-aux)
 AC_CONFIG_MACRO_DIR(m4)
 AM_INIT_AUTOMAKE
-LT_INIT
+AC_DISABLE_STATIC
+AC_PROG_LIBTOOL
 
 # Docygen features
 DX_HTML_FEATURE(ON)
@@ -35,7 +36,6 @@ AC_CONFIG_FILES([shibboleth.spec pkginfo Portfile])
 
 AC_PROG_CC([gcc gcc3 cc])
 AC_PROG_CXX([g++ g++3 c++ CC])
-AC_DISABLE_STATIC
 AC_CANONICAL_HOST
 
 if test "$GCC" = "yes" ; then
@@ -72,6 +72,7 @@ AC_STRUCT_TM
 # Checks for library functions.
 AC_FUNC_STRFTIME
 AC_FUNC_STRERROR_R
+AC_CHECK_HEADERS([sys/utsname.h])
 AC_CHECK_FUNCS([strchr strdup strstr timegm gmtime_r strtok_r strcasecmp])
 
 # checks for pthreads
@@ -118,25 +119,21 @@ AC_CXX_REQUIRE_STL
 # Thank you Solaris, really.
 AC_MSG_CHECKING(for ctime_r)
 if test -z "$ac_cv_ctime_args"; then
-    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <time.h>]], [[
-        time_t clock;
-        char buf[26];
-        ctime_r(&clock, buf);
-    ]])],[ac_cv_ctime_args=2],[])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_PROGRAM([[#include <time.h>]], [[time_t clock; char buf[26]; ctime_r(&clock, buf);]])],
+        [ac_cv_ctime_args=2],[])
 
-    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <time.h>]], [[
-        time_t clock;
-        char buf[26];
-        ctime_r(&clock, buf, 26);
-    ]])],[ac_cv_ctime_args=3],[])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_PROGRAM([[#include <time.h>]], [[time_t clock; char buf[26]; ctime_r(&clock, buf, 26);]])],
+        [ac_cv_ctime_args=3],[])
 fi
 if test -z "$ac_cv_ctime_args"; then
     AC_MSG_RESULT(no)
 else
     if test "$ac_cv_ctime_args" = 2; then
-        AC_DEFINE(HAVE_CTIME_R_2,1,[Define if ctime_r is present with 2 parameters.])
+        AC_DEFINE([HAVE_CTIME_R_2],[1],[Define if ctime_r is present with 2 parameters.])
     elif test "$ac_cv_ctime_args" = 3; then
-        AC_DEFINE(HAVE_CTIME_R_3,1,[Define if ctime_r is present with 3 parameters.])
+        AC_DEFINE([HAVE_CTIME_R_3],[1],[Define if ctime_r is present with 3 parameters.])
     fi
     AC_MSG_RESULT([yes, and it takes $ac_cv_ctime_args arguments])
 fi 
@@ -222,7 +219,9 @@ AC_COMPILE_IFELSE(
     [AC_MSG_RESULT([no])])
 
 AC_MSG_CHECKING([whether Xerces DOMNodeFilter API returns a short])
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <xercesc/dom/DOM.hpp>]], [[using namespace XERCES_CPP_NAMESPACE;
+AC_COMPILE_IFELSE(
+    [AC_LANG_PROGRAM([[#include <xercesc/dom/DOM.hpp>]],
+        [[using namespace XERCES_CPP_NAMESPACE;
       class Blocker : public DOMNodeFilter {
       public:
         short acceptNode(const DOMNode* node) const {
@@ -230,8 +229,9 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <xercesc/dom/DOM.hpp>]], [[using n
         }
       };
       static Blocker g_Blocker;
-    ]])],[AC_MSG_RESULT([yes])
-    AC_DEFINE([SHIBSP_XERCESC_SHORT_ACCEPTNODE],[1],[Define to 1 if Xerces DOMNodeFilter API returns a short.])],[AC_MSG_RESULT([no])])
+    ]])],
+    [AC_MSG_RESULT([yes])AC_DEFINE([SHIBSP_XERCESC_SHORT_ACCEPTNODE],[1],[Define to 1 if Xerces DOMNodeFilter API returns a short.])],
+    [AC_MSG_RESULT([no])])
 
 #XML-Tooling settings
 AC_ARG_WITH(xmltooling,
@@ -336,16 +336,15 @@ save_LIBS="$LIBS"
 LIBS="$XMLSEC_LIBS $LIBS"
 
 AC_CHECK_HEADER([saml/saml2/metadata/Metadata.h],,AC_MSG_ERROR([unable to find OpenSAML header files]))
-AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-#include <saml/SAMLConfig.h>
-#include <saml/version.h>
-	]], [[
-#if _OPENSAML_VERSION >= 20400
+AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([[#include <saml/SAMLConfig.h>
+#include <saml/version.h>]],
+[[#if _OPENSAML_VERSION >= 20400
 opensaml::SAMLConfig::getConfig();
 #else
 #error Need OpenSAML version 2.4 or higher
-#endif
-	]])],[AC_DEFINE(HAVE_SAML,1,[Define if saml library was found])],[AC_MSG_ERROR([unable to link with OpenSAML, or version was too old])
+#endif]])],
+    ,[AC_MSG_ERROR([unable to link with OpenSAML, or version was too old])
 	])
 
 # restore master libs
@@ -926,11 +925,13 @@ if test "$build_odbc" = "yes" ; then
       save_LIBS="$LIBS"
       LIBS="$LIBS $ODBC_LIBS"
       AC_MSG_CHECKING(if we can link againt ODBC)
-      AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <sql.h>
-         #include <sqlext.h>
-         #include <stdio.h>]], [[SQLSetEnvAttr(SQL_NULL_HANDLE, SQL_ATTR_CONNECTION_POOLING, (void*)SQL_CP_ONE_PER_HENV, 0)]])],[have_odbc_libs=yes],[have_odbc_libs=no])
+      AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM([[#include <sql.h>
+ #include <sqlext.h>
+ #include <stdio.h>]],
+            [[SQLSetEnvAttr(SQL_NULL_HANDLE, SQL_ATTR_CONNECTION_POOLING, (void*)SQL_CP_ONE_PER_HENV, 0)]])],
+        [have_odbc_libs=yes],[have_odbc_libs=no])
       LIBS="$save_LIBS"
-
       if test "$have_odbc_libs" = no ; then
          if test "$odbc_enabled" = "yes" ; then
             AC_MSG_ERROR([unable to link with ODBC Library])
@@ -950,6 +951,142 @@ if test "$have_odbc_libs" = yes ; then
    WANT_SUBDIRS="$WANT_SUBDIRS odbc-store"
    AC_SUBST(ODBC_CFLAGS)
    AC_SUBST(ODBC_LIBS)
+fi
+
+# GSS-API checking
+
+GSSAPI_ROOT="/usr"
+AC_ARG_WITH(gssapi-includes,
+  AS_HELP_STRING([--with-gssapi-includes=DIR],[Specify location of GSSAPI header]),
+  [ GSSAPI_INCS="-I$withval"
+    want_gss="yes" ]
+)
+
+AC_ARG_WITH(gssapi-libs,
+  AS_HELP_STRING([--with-gssapi-libs=DIR],[Specify location of GSSAPI libs]),
+  [ GSSAPI_LIB_DIR="-L$withval"
+    want_gss="yes" ]
+)
+
+AC_ARG_WITH(gssapi,
+  AS_HELP_STRING([--with-gssapi=DIR],[Where to look for GSSAPI]),
+  [ GSSAPI_ROOT="$withval"
+  if test x"$GSSAPI_ROOT" != xno; then
+    want_gss="yes"
+    if test x"$GSSAPI_ROOT" = xyes; then
+      dnl if yes, then use default root
+      GSSAPI_ROOT="/usr"
+    fi
+  fi
+])
+
+save_CPPFLAGS="$CPPFLAGS"
+AC_MSG_CHECKING([if GSSAPI support is requested])
+if test x"$want_gss" = xyes; then
+  AC_MSG_RESULT(yes)
+
+  if test -z "$GSSAPI_INCS"; then
+     if test -f "$GSSAPI_ROOT/bin/krb5-config"; then
+        GSSAPI_INCS=`$GSSAPI_ROOT/bin/krb5-config --cflags gssapi`
+     elif test "$GSSAPI_ROOT" != "yes"; then
+        GSSAPI_INCS="-I$GSSAPI_ROOT/include"
+     fi
+  fi
+
+  CPPFLAGS="$CPPFLAGS $GSSAPI_INCS"
+
+  AC_CHECK_HEADER(gss.h,
+    [
+      dnl found in the given dirs
+      AC_DEFINE([HAVE_GSSGNU],[1],[if you have the GNU gssapi libraries])
+      gnu_gss=yes
+    ],
+    [
+      dnl not found, check Heimdal or MIT
+      AC_CHECK_HEADERS([gssapi/gssapi.h], [], [not_mit=1])
+      AC_CHECK_HEADERS(
+        [gssapi/gssapi_generic.h gssapi/gssapi_krb5.h],
+        [],
+        [not_mit=1],
+        [
+AC_INCLUDES_DEFAULT
+#ifdef HAVE_GSSAPI_GSSAPI_H
+#include <gssapi/gssapi.h>
+#endif
+        ])
+      if test "x$not_mit" = "x1"; then
+        dnl MIT not found, check for Heimdal
+        AC_CHECK_HEADER([gssapi.h],
+            [
+              dnl found
+              AC_DEFINE([HAVE_GSSHEIMDAL],[1],[if you have the Heimdal gssapi libraries])
+            ],
+            [
+              dnl no header found, disabling GSS
+              want_gss=no
+              AC_MSG_WARN([disabling GSSAPI since no header files was found])
+            ]
+          )
+      else
+        dnl MIT found
+        AC_DEFINE([HAVE_GSSMIT],[1],[if you have the MIT gssapi libraries])
+        dnl check if we have a really old MIT kerberos (<= 1.2)
+        AC_MSG_CHECKING([if gssapi headers declare GSS_C_NT_HOSTBASED_SERVICE])
+        AC_COMPILE_IFELSE([
+          AC_LANG_PROGRAM([[
+#include <gssapi/gssapi.h>
+#include <gssapi/gssapi_generic.h>
+#include <gssapi/gssapi_krb5.h>
+          ]],[[
+            gss_import_name(
+                            (OM_uint32 *)0,
+                            (gss_buffer_t)0,
+                            GSS_C_NT_HOSTBASED_SERVICE,
+                            (gss_name_t *)0);
+          ]])
+        ],[
+          AC_MSG_RESULT([yes])
+        ],[
+          AC_MSG_RESULT([no])
+          AC_DEFINE([HAVE_OLD_GSSMIT],[1],[if you have an old MIT gssapi library, lacking GSS_C_NT_HOSTBASED_SERVICE])
+        ])
+      fi
+    ]
+  )
+else
+  AC_MSG_RESULT(no)
+fi
+if test x"$want_gss" = xyes; then
+  AC_DEFINE([HAVE_GSSAPI],[1],[if you have the gssapi libraries])
+
+  if test -n "$gnu_gss"; then
+    LDFLAGS="$LDFLAGS $GSSAPI_LIB_DIR"
+    LIBS="$LIBS -lgss"
+  elif test -z "$GSSAPI_LIB_DIR"; then
+     case $host in
+     *-*-darwin*)
+        LIBS="$LIBS -lgssapi_krb5 -lresolv"
+        ;;
+     *)
+        if test -f "$GSSAPI_ROOT/bin/krb5-config"; then
+           dnl krb5-config doesn't have --libs-only-L or similar, put everything
+           dnl into LIBS
+           gss_libs=`$GSSAPI_ROOT/bin/krb5-config --libs gssapi`
+           LIBS="$LIBS $gss_libs"
+        elif test "$GSSAPI_ROOT" != "yes"; then
+           LDFLAGS="$LDFLAGS -L$GSSAPI_ROOT/lib$libsuff"
+           LIBS="$LIBS -lgssapi"
+        else
+           LIBS="$LIBS -lgssapi"
+        fi
+        ;;
+     esac
+  else
+     LDFLAGS="$LDFLAGS $GSSAPI_LIB_DIR"
+     LIBS="$LIBS -lgssapi"
+  fi
+else
+  CPPFLAGS="$save_CPPFLAGS"
 fi
 
 

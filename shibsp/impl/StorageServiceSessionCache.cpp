@@ -35,6 +35,7 @@
 #include "SessionCacheEx.h"
 #include "TransactionLog.h"
 #include "attribute/Attribute.h"
+#include "handler/RemotedHandler.h"
 #include "remoting/ListenerService.h"
 #include "util/SPConstants.h"
 
@@ -106,7 +107,7 @@ namespace shibsp {
             );
         bool matches(
             const Application& app,
-            const xmltooling::HTTPRequest& request,
+            const HTTPRequest& request,
             const saml2md::EntityDescriptor* issuer,
             const saml2::NameID& nameid,
             const set<string>* indexes
@@ -116,7 +117,12 @@ namespace shibsp {
         void remove(const Application& app, const char* key);
         void test();
 
-        string active(const Application& app, const xmltooling::HTTPRequest& request) {
+        string active(const Application& app, const HTTPRequest& request) {
+            if (!m_inboundHeader.empty()) {
+                string session_id = request.getHeader(m_inboundHeader.c_str());
+                if (!session_id.empty())
+                    return session_id;
+            }
             pair<string,const char*> shib_cookie = app.getCookieNameProps("_shibsession_");
             const char* session_id = request.getCookie(shib_cookie.first.c_str());
             return (session_id ? session_id : "");
@@ -129,47 +135,8 @@ namespace shibsp {
             return nullptr;
         }
 
-        Session* find(const Application& app, HTTPRequest& request, const char* client_addr=nullptr, time_t* timeout=nullptr) {
-            string id = active(app, request);
-            if (id.empty())
-                return nullptr;
-            try {
-                Session* session = find(app, id.c_str(), client_addr, timeout);
-                if (session)
-                    return session;
-                HTTPResponse* response = dynamic_cast<HTTPResponse*>(&request);
-                if (response) {
-                    pair<string,const char*> shib_cookie = app.getCookieNameProps("_shibsession_");
-                    string exp(shib_cookie.second);
-                    exp += "; expires=Mon, 01 Jan 2001 00:00:00 GMT";
-                    response->setCookie(shib_cookie.first.c_str(), exp.c_str());
-                }
-            }
-            catch (exception&) {
-                HTTPResponse* response = dynamic_cast<HTTPResponse*>(&request);
-                if (response) {
-                    pair<string,const char*> shib_cookie = app.getCookieNameProps("_shibsession_");
-                    string exp(shib_cookie.second);
-                    exp += "; expires=Mon, 01 Jan 2001 00:00:00 GMT";
-                    response->setCookie(shib_cookie.first.c_str(), exp.c_str());
-                }
-                throw;
-            }
-            return nullptr;
-        }
-
-        void remove(const Application& app, const HTTPRequest& request, HTTPResponse* response=nullptr) {
-            pair<string,const char*> shib_cookie = app.getCookieNameProps("_shibsession_");
-            const char* session_id = request.getCookie(shib_cookie.first.c_str());
-            if (session_id && *session_id) {
-                if (response) {
-                    string exp(shib_cookie.second);
-                    exp += "; expires=Mon, 01 Jan 2001 00:00:00 GMT";
-                    response->setCookie(shib_cookie.first.c_str(), exp.c_str());
-                }
-                remove(app, session_id);
-            }
-        }
+        Session* find(const Application& app, HTTPRequest& request, const char* client_addr=nullptr, time_t* timeout=nullptr);
+        void remove(const Application& app, const HTTPRequest& request, HTTPResponse* response=nullptr);
 
         unsigned long getCacheTimeout(const Application& app) {
             // Computes offset for adjusting expiration of sessions.
@@ -203,6 +170,7 @@ namespace shibsp {
 #endif
         const DOMElement* m_root;         // Only valid during initialization
         unsigned long m_inprocTimeout,m_cacheTimeout,m_cacheAllowance;
+        string m_inboundHeader,m_outboundHeader;
 
         // inproc means we buffer sessions in memory
         RWLock* m_lock;
@@ -775,6 +743,8 @@ SSCache::SSCache(const DOMElement* e)
     static const XMLCh cacheAssertions[] =  UNICODE_LITERAL_15(c,a,c,h,e,A,s,s,e,r,t,i,o,n,s);
     static const XMLCh cacheTimeout[] =     UNICODE_LITERAL_12(c,a,c,h,e,T,i,m,e,o,u,t);
     static const XMLCh inprocTimeout[] =    UNICODE_LITERAL_13(i,n,p,r,o,c,T,i,m,e,o,u,t);
+    static const XMLCh inboundHeader[] =    UNICODE_LITERAL_13(i,n,b,o,u,n,d,H,e,a,d,e,r);
+    static const XMLCh outboundHeader[] =   UNICODE_LITERAL_14(o,u,t,b,o,u,n,d,H,e,a,d,e,r);
     static const XMLCh _StorageService[] =  UNICODE_LITERAL_14(S,t,o,r,a,g,e,S,e,r,v,i,c,e);
     static const XMLCh _StorageServiceLite[] = UNICODE_LITERAL_18(S,t,o,r,a,g,e,S,e,r,v,i,c,e,L,i,t,e);
 
@@ -782,6 +752,10 @@ SSCache::SSCache(const DOMElement* e)
     m_cacheAllowance = XMLHelper::getAttrInt(e, 0, cacheAllowance);
     if (inproc)
         m_inprocTimeout = XMLHelper::getAttrInt(e, 900, inprocTimeout);
+    m_inboundHeader = XMLHelper::getAttrString(e, nullptr, inboundHeader);
+    if (!m_inboundHeader.empty())
+        RemotedHandler::addRemotedHeader(m_inboundHeader.c_str());
+    m_outboundHeader = XMLHelper::getAttrString(e, nullptr, outboundHeader);
 
 #ifndef SHIBSP_LITE
     if (conf.isEnabled(SPConfig::OutOfProcess)) {
@@ -1126,6 +1100,9 @@ void SSCache::insert(
             xlog->log.infoStream() << "\t" << (*a)->getId() << " (" << (*a)->valueCount() << " values)";
         xlog->log.info("}");
     }
+
+    if (!m_outboundHeader.empty())
+        httpResponse.setResponseHeader(m_outboundHeader.c_str(), key.get());
 
     time_t cookieLifetime = 0;
     pair<string,const char*> shib_cookie = app.getCookieNameProps("_shibsession_", &cookieLifetime);
@@ -1523,6 +1500,65 @@ Session* SSCache::find(const Application& app, const char* key, const char* clie
     }
 
     return session;
+}
+
+Session* SSCache::find(const Application& app, HTTPRequest& request, const char* client_addr, time_t* timeout)
+{
+    string id = active(app, request);
+    if (id.empty())
+        return nullptr;
+    try {
+        Session* session = find(app, id.c_str(), client_addr, timeout);
+        if (session)
+            return session;
+        HTTPResponse* response = dynamic_cast<HTTPResponse*>(&request);
+        if (response) {
+            if (!m_outboundHeader.empty())
+                response->setResponseHeader(m_outboundHeader.c_str(), nullptr);
+            pair<string,const char*> shib_cookie = app.getCookieNameProps("_shibsession_");
+            string exp(shib_cookie.second);
+            exp += "; expires=Mon, 01 Jan 2001 00:00:00 GMT";
+            response->setCookie(shib_cookie.first.c_str(), exp.c_str());
+        }
+    }
+    catch (exception&) {
+        HTTPResponse* response = dynamic_cast<HTTPResponse*>(&request);
+        if (response) {
+            if (!m_outboundHeader.empty())
+                response->setResponseHeader(m_outboundHeader.c_str(), nullptr);
+            pair<string,const char*> shib_cookie = app.getCookieNameProps("_shibsession_");
+            string exp(shib_cookie.second);
+            exp += "; expires=Mon, 01 Jan 2001 00:00:00 GMT";
+            response->setCookie(shib_cookie.first.c_str(), exp.c_str());
+        }
+        throw;
+    }
+    return nullptr;
+}
+
+void SSCache::remove(const Application& app, const HTTPRequest& request, HTTPResponse* response)
+{
+    string session_id;
+    pair<string,const char*> shib_cookie = app.getCookieNameProps("_shibsession_");
+
+    if (!m_inboundHeader.empty())
+        session_id = request.getHeader(m_inboundHeader.c_str());
+    if (session_id.empty()) {
+        const char* c = request.getCookie(shib_cookie.first.c_str());
+        if (c && *c)
+            session_id = c;
+    }
+
+    if (!session_id.empty()) {
+        if (response) {
+            if (!m_outboundHeader.empty())
+                response->setResponseHeader(m_outboundHeader.c_str(), nullptr);
+            string exp(shib_cookie.second);
+            exp += "; expires=Mon, 01 Jan 2001 00:00:00 GMT";
+            response->setCookie(shib_cookie.first.c_str(), exp.c_str());
+        }
+        remove(app, session_id.c_str());
+    }
 }
 
 void SSCache::remove(const Application& app, const char* key)
