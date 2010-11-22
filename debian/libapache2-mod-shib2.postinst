@@ -33,7 +33,7 @@ if [ "$1" = "configure" ] ; then
 
     # The new shibd (which is about to be started) requires the corresponding
     # Apache module, otherwise strange, hard to debug error messages result.
-    if [ -L /etc/apache2/mods-enabled/shib2.load ] ; then
+    if [ -f /etc/apache2/mods-enabled/shib2.load ] ; then
         invoke-rc.d apache2 restart
     fi
 fi
