@@ -12,7 +12,7 @@ shibboleth-sp2 (2.3.1+dfsg-3) UNRELEASED; urgency=low
 shibboleth-sp2 (2.3.1+dfsg-2) unstable; urgency=low
 
   * Modify shib-keygen to create the new certificate key group-readable by
-    _shibd and not world-readable.  (Closes: #571631)
+    _shibd and not world-readable.  (Closes: #571631, CVE-2010-2450)
   * Force source format 1.0 for now since it makes backporting easier.
   * Update debhelper compatibility level to V7.
     - Use dh_prep instead of dh_clean -k.
