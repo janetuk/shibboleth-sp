@@ -1,3 +1,13 @@
+shibboleth-sp2 (2.3.1+dfsg-5) UNRELEASED; urgency=low
+
+  [ Ferenc Wagner ]
+  * Fix watch file.  The 2.4 prerelease broke it.
+
+  [ Faidon Liambotis ]
+  * Enable and ship memcache-store.
+
+ -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
+
 shibboleth-sp2 (2.3.1+dfsg-4) unstable; urgency=low
 
   * Only restart Apache if it is running.  Thanks, Mehdi Dogguy, Michael
@@ -10,7 +20,6 @@ shibboleth-sp2 (2.3.1+dfsg-3) unstable; urgency=low
   [ Ferenc Wagner ]
   * Restart Apache from the postinst script if the shib2 module is enabled
     to avoid communication errors with the upgraded shibd.  (Closes: #602328)
-  * Fix watch file.  The 2.4 prerelease broke it.
 
   [ Faidon Liambotis ]
   * Add myself to Uploaders.
