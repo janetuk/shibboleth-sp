@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@
 #include "Application.h"
 #include "exceptions.h"
 #include "ServiceProvider.h"
-#include "SPRequest.h"
 #include "handler/AbstractHandler.h"
 #include "handler/RemotedHandler.h"
 #include "handler/SessionInitiator.h"
@@ -58,7 +57,7 @@ namespace shibsp {
     {
     public:
         Shib1SessionInitiator(const DOMElement* e, const char* appId)
-                : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionInitiator.Shib1"), NULL, &m_remapper), m_appId(appId) {
+                : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionInitiator.Shib1"), nullptr, &m_remapper), m_appId(appId) {
             // If Location isn't set, defer address registration until the setParent call.
             pair<bool,const char*> loc = getString("Location");
             if (loc.first) {
@@ -72,6 +71,10 @@ namespace shibsp {
         void receive(DDF& in, ostream& out);
         pair<bool,long> unwrap(SPRequest& request, DDF& out) const;
         pair<bool,long> run(SPRequest& request, string& entityID, bool isHandler=true) const;
+
+        const XMLCh* getProtocolFamily() const {
+            return samlconstants::SAML11_PROTOCOL_ENUM;
+        }
 
     private:
         pair<bool,long> doRequest(
@@ -113,80 +116,73 @@ void Shib1SessionInitiator::setParent(const PropertySet* parent)
 pair<bool,long> Shib1SessionInitiator::run(SPRequest& request, string& entityID, bool isHandler) const
 {
     // We have to know the IdP to function.
-    if (entityID.empty())
+    if (entityID.empty() || !checkCompatibility(request, isHandler))
         return make_pair(false,0L);
 
     string target;
-    string postData;
-    const Handler* ACS=NULL;
-    const char* option;
-    const Application& app=request.getApplication();
+    pair<bool,const char*> prop;
+    const Handler* ACS=nullptr;
+    const Application& app = request.getApplication();
 
     if (isHandler) {
-        option=request.getParameter("acsIndex");
-        if (option) {
-            ACS = app.getAssertionConsumerServiceByIndex(atoi(option));
+        prop.second = request.getParameter("acsIndex");
+        if (prop.second && *prop.second) {
+            ACS = app.getAssertionConsumerServiceByIndex(atoi(prop.second));
             if (!ACS)
                 request.log(SPRequest::SPWarn, "invalid acsIndex specified in request, using acsIndex property");
         }
 
-        option = request.getParameter("target");
-        if (option)
-            target = option;
+        prop = getString("target", request);
+        if (prop.first)
+            target = prop.second;
 
         // Since we're passing the ACS by value, we need to compute the return URL,
         // so we'll need the target resource for real.
-        recoverRelayState(request.getApplication(), request, request, target, false);
+        recoverRelayState(app, request, request, target, false);
     }
     else {
-        // We're running as a "virtual handler" from within the filter.
-        // The target resource is the current one and everything else is defaulted.
-        target=request.getRequestURL();
+        // Check for a hardwired target value in the map or handler.
+        prop = getString("target", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
+        if (prop.first)
+            target = prop.second;
+        else
+            target = request.getRequestURL();
+    }
+
+    if (!ACS) {
+        // Try fixed index property.
+        pair<bool,unsigned int> index = getUnsignedInt("acsIndex", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
+        if (index.first)
+            ACS = app.getAssertionConsumerServiceByIndex(index.second);
+    }
+
+    // If we picked by index, validate the ACS for use with this protocol.
+    if (!ACS || !XMLString::equals(getProtocolFamily(), ACS->getProtocolFamily())) {
+        if (ACS)
+            request.log(SPRequest::SPWarn, "invalid acsIndex property, or non-SAML 1.x ACS, using default SAML 1.x ACS");
+        ACS = app.getAssertionConsumerServiceByProtocol(getProtocolFamily());
+        if (!ACS)
+            throw ConfigurationException("Unable to locate a SAML 1.x ACS endpoint to use for response.");
     }
 
     // Since we're not passing by index, we need to fully compute the return URL.
-    if (!ACS) {
-        pair<bool,unsigned int> index = getUnsignedInt("acsIndex");
-        if (index.first) {
-            ACS = app.getAssertionConsumerServiceByIndex(index.second);
-            if (!ACS)
-                request.log(SPRequest::SPWarn, "invalid acsIndex property, using default ACS location");
-        }
-        if (!ACS)
-            ACS = app.getDefaultAssertionConsumerService();
-    }
-
-    // Validate the ACS for use with this protocol.
-    pair<bool,const char*> ACSbinding = ACS ? ACS->getString("Binding") : pair<bool,const char*>(false,NULL);
-    if (ACSbinding.first) {
-        pair<bool,const char*> compatibleBindings = getString("compatibleBindings");
-        if (compatibleBindings.first && strstr(compatibleBindings.second, ACSbinding.second) == NULL) {
-            m_log.error("configured or requested ACS has non-SAML 1.x binding");
-            throw ConfigurationException("Configured or requested ACS has non-SAML 1.x binding ($1).", params(1, ACSbinding.second));
-        }
-        else if (strcmp(ACSbinding.second, samlconstants::SAML1_PROFILE_BROWSER_POST) &&
-                 strcmp(ACSbinding.second, samlconstants::SAML1_PROFILE_BROWSER_ARTIFACT)) {
-            m_log.error("configured or requested ACS has non-SAML 1.x binding");
-            throw ConfigurationException("Configured or requested ACS has non-SAML 1.x binding ($1).", params(1, ACSbinding.second));
-        }
-    }
-
     // Compute the ACS URL. We add the ACS location to the base handlerURL.
-    string ACSloc=request.getHandlerURL(target.c_str());
-    pair<bool,const char*> loc=ACS ? ACS->getString("Location") : pair<bool,const char*>(false,NULL);
-    if (loc.first) ACSloc+=loc.second;
+    string ACSloc = request.getHandlerURL(target.c_str());
+    prop = ACS->getString("Location");
+    if (prop.first)
+        ACSloc += prop.second;
 
     if (isHandler) {
         // We may already have RelayState set if we looped back here,
-        // but just in case target is a resource, we reset it back.
-        target.erase();
-        option = request.getParameter("target");
-        if (option)
-            target = option;
+        // but we've turned it back into a resource by this point, so if there's
+        // a target on the URL, reset to that value.
+        prop.second = request.getParameter("target");
+        if (prop.second && *prop.second)
+            target = prop.second;
     }
 
     // Is the in-bound binding artifact?
-    bool artifactInbound = ACS ? XMLString::equals(ACS->getString("Binding").second, samlconstants::SAML1_PROFILE_BROWSER_ARTIFACT) : false;
+    bool artifactInbound = XMLString::equals(ACS->getString("Binding").second, samlconstants::SAML1_PROFILE_BROWSER_ARTIFACT);
 
     m_log.debug("attempting to initiate session using Shibboleth with provider (%s)", entityID.c_str());
 
@@ -227,7 +223,7 @@ void Shib1SessionInitiator::receive(DDF& in, ostream& out)
 {
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) to generate AuthnRequest", aid ? aid : "(missing)");
@@ -239,7 +235,7 @@ void Shib1SessionInitiator::receive(DDF& in, ostream& out)
     if (!entityID || !acsLocation)
         throw ConfigurationException("No entityID or acsLocation parameter supplied to remoted SessionInitiator.");
 
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
 
     // Wrap the outgoing object with a Response facade.
@@ -250,7 +246,7 @@ void Shib1SessionInitiator::receive(DDF& in, ostream& out)
     // Since we're remoted, the result should either be a throw, which we pass on,
     // a false/0 return, which we just return as an empty structure, or a response/redirect,
     // which we capture in the facade and send back.
-    doRequest(*app, NULL, *http.get(), entityID, acsLocation, (in["artifact"].integer() != 0), relayState);
+    doRequest(*app, nullptr, *http.get(), entityID, acsLocation, (in["artifact"].integer() != 0), relayState);
     if (!ret.isstruct())
         ret.structure();
     ret.addmember("RelayState").unsafe_string(relayState.c_str());
@@ -307,7 +303,7 @@ pair<bool,long> Shib1SessionInitiator::doRequest(
         relayState = "default";
 
     char timebuf[16];
-    sprintf(timebuf,"%lu",time(NULL));
+    sprintf(timebuf,"%lu",time(nullptr));
     const URLEncoder* urlenc = XMLToolingConfig::getConfig().getURLEncoder();
     auto_ptr_char dest(ep->getLocation());
     string req=string(dest.get()) + (strchr(dest.get(),'?') ? '&' : '?') + "shire=" + urlenc->encode(acsLocation) +

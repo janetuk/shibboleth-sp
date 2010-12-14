@@ -22,9 +22,6 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
 
-/* Define to 1 if you have the `crypto' library (-lcrypto). */
-#define HAVE_LIBCRYPTO 1
-
 /* Define to 1 if you have the `dmallocxx' library (-ldmallocxx). */
 /* #undef HAVE_LIBDMALLOCXX */
 
@@ -33,12 +30,6 @@
 
 /* Define if log4cpp library is used. */
 /* #undef SHIBSP_LOG4CPP */
-
-/* Define to 1 if you have the `ssl' library (-lssl). */
-#define HAVE_LIBSSL 1
-
-/* Define if Xerces-C library was found */
-#define HAVE_LIBXERCESC 1
 
 #include <xercesc/util/XercesVersion.hpp>
 
@@ -56,8 +47,12 @@
 /* Define if you have POSIX threads libraries and header files. */
 /* #undef HAVE_PTHREAD */
 
-/* Define if saml library was found */
-#define HAVE_SAML 1
+#ifndef SHIBSP_LITE
+# include <xsec/framework/XSECDefs.hpp>
+# if (_XSEC_VERSION_FULL >= 10600)
+#  define SHIBSP_XMLSEC_WHITELISTING 1
+# endif
+#endif
 
 /* Define to 1 if you have the <stdint.h> header file. */
 /* #undef HAVE_STDINT_H */
@@ -111,19 +106,19 @@
 #define PACKAGE "shibboleth"
 
 /* Define to the address where bug reports for this package should be sent. */
-#define PACKAGE_BUGREPORT "shibboleth-users@internet2.edu"
+#define PACKAGE_BUGREPORT "https://bugs.internet2.edu/"
 
 /* Define to the full name of this package. */
 #define PACKAGE_NAME "shibboleth"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "shibboleth 2.3.1"
+#define PACKAGE_STRING "shibboleth 2.4"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "shibboleth"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "2.3.1"
+#define PACKAGE_VERSION "2.4"
 
 /* Define to the necessary symbol if this constant uses a non-standard name on
    your system. */
@@ -136,7 +131,7 @@
 /* #undef TM_IN_SYS_TIME */
 
 /* Version number of package */
-#define VERSION "2.3.1"
+#define VERSION "2.4"
 
 /* Define to empty if `const' does not conform to ANSI C. */
 /* #undef const */

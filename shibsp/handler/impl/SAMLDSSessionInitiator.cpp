@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,10 @@
 #include "internal.h"
 #include "Application.h"
 #include "exceptions.h"
-#include "SPRequest.h"
 #include "handler/AbstractHandler.h"
 #include "handler/SessionInitiator.h"
 
 #include <xmltooling/XMLToolingConfig.h>
-#include <xmltooling/impl/AnyElement.h>
 #include <xmltooling/util/URLEncoder.h>
 
 using namespace shibsp;
@@ -52,28 +50,13 @@ namespace shibsp {
     class SHIBSP_DLLLOCAL SAMLDSSessionInitiator : public SessionInitiator, public AbstractHandler
     {
     public:
-        SAMLDSSessionInitiator(const DOMElement* e, const char* appId)
-                : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionInitiator.SAMLDS")), m_url(NULL), m_returnParam(NULL)
-#ifndef SHIBSP_LITE
-                    ,m_discoNS("urn:oasis:names:tc:SAML:profiles:SSO:idp-discovery-protocol")
-#endif
-        {
-            pair<bool,const char*> url = getString("URL");
-            if (!url.first)
-                throw ConfigurationException("SAMLDS SessionInitiator requires a URL property.");
-            m_url = url.second;
-            url = getString("entityIDParam");
-            if (url.first)
-                m_returnParam = url.second;
-        }
+        SAMLDSSessionInitiator(const DOMElement* e, const char* appId);
         virtual ~SAMLDSSessionInitiator() {}
 
         pair<bool,long> run(SPRequest& request, string& entityID, bool isHandler=true) const;
 
 #ifndef SHIBSP_LITE
         void generateMetadata(SPSSODescriptor& role, const char* handlerURL) const {
-            static const XMLCh LOCAL_NAME[] = UNICODE_LITERAL_17(D,i,s,c,o,v,e,r,y,R,e,s,p,o,n,s,e);
-
             // Initial guess at index to use.
             pair<bool,unsigned int> ix = getUnsignedInt("index");
             if (!ix.first)
@@ -83,17 +66,13 @@ namespace shibsp {
             if (role.getExtensions()) {
                 const vector<XMLObject*>& exts = const_cast<const Extensions*>(role.getExtensions())->getUnknownXMLObjects();
                 for (vector<XMLObject*>::const_reverse_iterator i = exts.rbegin(); i != exts.rend(); ++i) {
-                    if (XMLString::equals((*i)->getElementQName().getLocalPart(), LOCAL_NAME) &&
-                        XMLString::equals((*i)->getElementQName().getNamespaceURI(), m_discoNS.get())) {
-                        const AttributeExtensibleXMLObject* sub = dynamic_cast<const AttributeExtensibleXMLObject*>(*i);
-                        if (sub) {
-                            const XMLCh* val = sub->getAttribute(xmltooling::QName(NULL,IndexedEndpointType::INDEX_ATTRIB_NAME));
-                            if (val) {
-                                int maxindex = XMLString::parseInt(val);
-                                if (ix.second <= maxindex)
-                                    ix.second = maxindex + 1;
-                                break;
-                            }
+                    const DiscoveryResponse* sub = dynamic_cast<DiscoveryResponse*>(*i);
+                    if (sub) {
+                        pair<bool,int> val = sub->getIndex();
+                        if (val.first) {
+                            if (ix.second <= val.second)
+                                ix.second = val.second + 1;
+                            break;
                         }
                     }
                 }
@@ -106,14 +85,10 @@ namespace shibsp {
             hurl += loc;
             auto_ptr_XMLCh widen(hurl.c_str());
 
-            ostringstream os;
-            os << ix.second;
-            auto_ptr_XMLCh widen2(os.str().c_str());
-
-            ElementProxy* ep = new AnyElementImpl(m_discoNS.get(), LOCAL_NAME);
-            ep->setAttribute(xmltooling::QName(NULL,EndpointType::LOCATION_ATTRIB_NAME), widen.get());
-            ep->setAttribute(xmltooling::QName(NULL,EndpointType::BINDING_ATTRIB_NAME), m_discoNS.get());
-            ep->setAttribute(xmltooling::QName(NULL,IndexedEndpointType::INDEX_ATTRIB_NAME), widen2.get());
+            DiscoveryResponse* ep = DiscoveryResponseBuilder::buildDiscoveryResponse();
+            ep->setLocation(widen.get());
+            ep->setBinding(samlconstants::IDP_DISCOVERY_PROTOCOL_NS);
+            ep->setIndex(ix.second);
             Extensions* ext = role.getExtensions();
             if (!ext) {
                 ext = ExtensionsBuilder::buildExtensions();
@@ -126,9 +101,7 @@ namespace shibsp {
     private:
         const char* m_url;
         const char* m_returnParam;
-#ifndef SHIBSP_LITE
-        auto_ptr_XMLCh m_discoNS;
-#endif
+        vector<string> m_preservedOptions;
     };
 
 #if defined (_MSC_VER)
@@ -142,47 +115,86 @@ namespace shibsp {
 
 };
 
+SAMLDSSessionInitiator::SAMLDSSessionInitiator(const DOMElement* e, const char* appId)
+        : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionInitiator.SAMLDS")), m_url(nullptr), m_returnParam(nullptr)
+{
+    pair<bool,const char*> url = getString("URL");
+    if (!url.first)
+        throw ConfigurationException("SAMLDS SessionInitiator requires a URL property.");
+    m_url = url.second;
+    url = getString("entityIDParam");
+    if (url.first)
+        m_returnParam = url.second;
+
+    pair<bool,const char*> options = getString("preservedOptions");
+    if (options.first) {
+        int j = 0;
+        string opt = options.second;
+        for (unsigned int i = 0;  i < opt.length();  i++) {
+            if (opt.at(i) == ' ') {
+                m_preservedOptions.push_back(opt.substr(j, i-j));
+                j = i+1;
+            }
+        }
+        m_preservedOptions.push_back(opt.substr(j, opt.length()-j));
+    }
+    else {
+        m_preservedOptions.push_back("isPassive");
+        m_preservedOptions.push_back("forceAuthn");
+        m_preservedOptions.push_back("authnContextClassRef");
+        m_preservedOptions.push_back("authnContextComparison");
+        m_preservedOptions.push_back("NameIDFormat");
+        m_preservedOptions.push_back("SPNameQualifier");
+        m_preservedOptions.push_back("acsIndex");
+    }
+
+    m_supportedOptions.insert("isPassive");
+}
+
 pair<bool,long> SAMLDSSessionInitiator::run(SPRequest& request, string& entityID, bool isHandler) const
 {
     // The IdP CANNOT be specified for us to run. Otherwise, we'd be redirecting to a DS
     // anytime the IdP's metadata was wrong.
-    if (!entityID.empty())
+    if (!entityID.empty() || !checkCompatibility(request, isHandler))
         return make_pair(false,0L);
 
     string target;
-    const char* option;
+    pair<bool,const char*> prop;
     bool isPassive=false;
     const Application& app=request.getApplication();
     pair<bool,const char*> discoveryURL = pair<bool,const char*>(true, m_url);
 
     if (isHandler) {
-        option = request.getParameter("SAMLDS");
-        if (option && !strcmp(option,"1")) {
+        prop.second = request.getParameter("SAMLDS");
+        if (prop.second && !strcmp(prop.second,"1")) {
             saml2md::MetadataException ex("No identity provider was selected by user.");
             ex.addProperty("statusCode", "urn:oasis:names:tc:SAML:2.0:status:Requester");
             ex.addProperty("statusCode2", "urn:oasis:names:tc:SAML:2.0:status:NoAvailableIDP");
             ex.raise();
         }
 
-        option = request.getParameter("target");
-        if (option)
-            target = option;
-        recoverRelayState(request.getApplication(), request, request, target, false);
+        prop = getString("target", request);
+        if (prop.first)
+            target = prop.second;
 
-        option = request.getParameter("isPassive");
-        if (option)
-            isPassive = !strcmp(option,"true");
+        recoverRelayState(app, request, request, target, false);
 
-        option = request.getParameter("discoveryURL");
-        if (option)
-            discoveryURL.second = option;
+        pair<bool,bool> passopt = getBool("isPassive", request);
+        isPassive = passopt.first && passopt.second;
+
+        prop.second = request.getParameter("discoveryURL");
+        if (prop.second && *prop.second)
+            discoveryURL.second = prop.second;
     }
     else {
-        // We're running as a "virtual handler" from within the filter.
-        // The target resource is the current one and everything else is
-        // defaulted or set by content policy.
-        target=request.getRequestURL();
-        pair<bool,bool> passopt = getBool("isPassive");
+        // Check for a hardwired target value in the map or handler.
+        prop = getString("target", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
+        if (prop.first)
+            target = prop.second;
+        else
+            target = request.getRequestURL();
+
+        pair<bool,bool> passopt = getBool("isPassive", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
         isPassive = passopt.first && passopt.second;
         discoveryURL = request.getRequestSettings().first->getString("discoveryURL");
     }
@@ -192,21 +204,23 @@ pair<bool,long> SAMLDSSessionInitiator::run(SPRequest& request, string& entityID
     m_log.debug("sending request to SAMLDS (%s)", discoveryURL.second);
 
     // Compute the return URL. We start with a self-referential link.
-    string returnURL=request.getHandlerURL(target.c_str());
-    pair<bool,const char*> thisloc = getString("Location");
-    if (thisloc.first) returnURL += thisloc.second;
+    string returnURL = request.getHandlerURL(target.c_str());
+    prop = getString("Location");
+    if (prop.first)
+        returnURL += prop.second;
     returnURL += "?SAMLDS=1"; // signals us not to loop if we get no answer back
 
     if (isHandler) {
         // We may already have RelayState set if we looped back here,
-        // but just in case target is a resource, we reset it back.
-        option = request.getParameter("target");
-        if (option)
-            target = option;
+        // but we've turned it back into a resource by this point, so if there's
+        // a target on the URL, reset to that value.
+        prop.second = request.getParameter("target");
+        if (prop.second && *prop.second)
+            target = prop.second;
     }
-    preserveRelayState(request.getApplication(), request, target);
+    preserveRelayState(app, request, target);
     if (!isHandler)
-        preservePostData(request.getApplication(), request, request, target.c_str());
+        preservePostData(app, request, request, target.c_str());
 
     const URLEncoder* urlenc = XMLToolingConfig::getConfig().getURLEncoder();
     if (isHandler) {
@@ -225,15 +239,15 @@ pair<bool,long> SAMLDSSessionInitiator::run(SPRequest& request, string& entityID
             }
             else {
                 // There's something in the query before target appears, so we have to find it.
-                thisloc.second = strstr(query,"&target=");
-                if (thisloc.second) {
+                prop.second = strstr(query, "&target=");
+                if (prop.second) {
                     // We found it, so first append everything up to it.
                     returnURL += '&';
-                    returnURL.append(query, thisloc.second - query);
-                    query = thisloc.second + 8; // move up just past the equals sign.
-                    thisloc.second = strchr(query, '&');
-                    if (thisloc.second)
-                        returnURL += thisloc.second;
+                    returnURL.append(query, prop.second - query);
+                    query = prop.second + 8; // move up just past the equals sign.
+                    prop.second = strchr(query, '&');
+                    if (prop.second)
+                        returnURL += prop.second;
                 }
                 else {
                     // No target in the existing query, so just append it as is.
@@ -246,9 +260,16 @@ pair<bool,long> SAMLDSSessionInitiator::run(SPRequest& request, string& entityID
         if (!target.empty())
             returnURL = returnURL + "&target=" + urlenc->encode(target.c_str());
     }
-    else if (!target.empty()) {
-        // For a virtual handler, we just append target to the return link.
-        returnURL = returnURL + "&target=" + urlenc->encode(target.c_str());;
+    else {
+        // For a virtual handler, we append target to the return link.
+         if (!target.empty())
+            returnURL = returnURL + "&target=" + urlenc->encode(target.c_str());
+         // Preserve designated request settings on the URL.
+         for (vector<string>::const_iterator opt = m_preservedOptions.begin(); opt != m_preservedOptions.end(); ++ opt) {
+             prop = request.getRequestSettings().first->getString(opt->c_str());
+             if (prop.first)
+                 returnURL = returnURL + '&' + (*opt) + '=' + urlenc->encode(prop.second);
+         }
     }
 
     string req=string(discoveryURL.second) + (strchr(discoveryURL.second,'?') ? '&' : '?') + "entityID=" + urlenc->encode(app.getString("entityID").second) +

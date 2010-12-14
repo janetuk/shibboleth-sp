@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,9 +25,8 @@
 #include "Application.h"
 #include "ServiceProvider.h"
 #include "SessionCache.h"
-#include "SPRequest.h"
 #include "handler/AbstractHandler.h"
-#include "handler/LogoutHandler.h"
+#include "handler/LogoutInitiator.h"
 
 #ifndef SHIBSP_LITE
 # include "binding/SOAPClient.h"
@@ -59,7 +58,7 @@ namespace shibsp {
     #pragma warning( disable : 4250 )
 #endif
 
-    class SHIBSP_DLLLOCAL SAML2LogoutInitiator : public AbstractHandler, public LogoutHandler
+    class SHIBSP_DLLLOCAL SAML2LogoutInitiator : public AbstractHandler, public LogoutInitiator
     {
     public:
         SAML2LogoutInitiator(const DOMElement* e, const char* appId);
@@ -76,11 +75,9 @@ namespace shibsp {
         void receive(DDF& in, ostream& out);
         pair<bool,long> run(SPRequest& request, bool isHandler=true) const;
 
-#ifndef SHIBSP_LITE
-        const char* getType() const {
-            return "LogoutInitiator";
+        const XMLCh* getProtocolFamily() const {
+            return samlconstants::SAML20P_NS;
         }
-#endif
 
     private:
         pair<bool,long> doRequest(
@@ -90,7 +87,7 @@ namespace shibsp {
         string m_appId;
 #ifndef SHIBSP_LITE
         LogoutRequest* buildRequest(
-            const Application& application, const Session& session, const RoleDescriptor& role, const MessageEncoder* encoder=NULL
+            const Application& application, const Session& session, const RoleDescriptor& role, const MessageEncoder* encoder=nullptr
             ) const;
 
         XMLCh* m_outgoing;
@@ -113,7 +110,7 @@ namespace shibsp {
 SAML2LogoutInitiator::SAML2LogoutInitiator(const DOMElement* e, const char* appId)
     : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".LogoutInitiator.SAML2")), m_appId(appId),
 #ifndef SHIBSP_LITE
-        m_outgoing(NULL),
+        m_outgoing(nullptr),
 #endif
         m_protocol(samlconstants::SAML20P_NS)
 {
@@ -142,14 +139,14 @@ SAML2LogoutInitiator::SAML2LogoutInitiator(const DOMElement* e, const char* appI
             try {
                 auto_ptr_char b(start);
                 MessageEncoder * encoder =
-                    SAMLConfig::getConfig().MessageEncoderManager.newPlugin(b.get(),pair<const DOMElement*,const XMLCh*>(e,NULL));
-                if (encoder->isUserAgentPresent()) {
+                    SAMLConfig::getConfig().MessageEncoderManager.newPlugin(b.get(),pair<const DOMElement*,const XMLCh*>(e,nullptr));
+                if (encoder->isUserAgentPresent() && XMLString::equals(getProtocolFamily(), encoder->getProtocolFamily())) {
                     m_encoders[start] = encoder;
                     m_log.debug("supporting outgoing binding (%s)", b.get());
                 }
                 else {
                     delete encoder;
-                    m_log.warn("skipping outgoing binding (%s), not a front-channel mechanism", b.get());
+                    m_log.warn("skipping outgoing binding (%s), not a SAML 2.0 front-channel mechanism", b.get());
                 }
             }
             catch (exception& ex) {
@@ -193,7 +190,7 @@ pair<bool,long> SAML2LogoutInitiator::run(SPRequest& request, bool isHandler) co
     // At this point we know the front-channel is handled.
     // We need the session to do any other work.
 
-    Session* session = NULL;
+    Session* session = nullptr;
     try {
         session = request.getSession(false, true, false);  // don't cache it and ignore all checks
         if (!session)
@@ -234,7 +231,7 @@ void SAML2LogoutInitiator::receive(DDF& in, ostream& out)
 
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for logout", aid ? aid : "(missing)");
@@ -245,13 +242,13 @@ void SAML2LogoutInitiator::receive(DDF& in, ostream& out)
     auto_ptr<HTTPRequest> req(getRequest(in));
 
     // Set up a response shim.
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
     auto_ptr<HTTPResponse> resp(getResponse(ret));
 
-    Session* session = NULL;
+    Session* session = nullptr;
     try {
-         session = app->getServiceProvider().getSessionCache()->find(*app, *req.get(), NULL, NULL);
+         session = app->getServiceProvider().getSessionCache()->find(*app, *req.get(), nullptr, nullptr);
     }
     catch (exception& ex) {
         m_log.error("error accessing current session: %s", ex.what());
@@ -266,7 +263,7 @@ void SAML2LogoutInitiator::receive(DDF& in, ostream& out)
             doRequest(*app, *req.get(), *resp.get(), session);
         }
         else {
-             m_log.error("no NameID or issuing entityID found in session");
+             m_log.log(getParent() ? Priority::WARN : Priority::ERROR, "bypassing SAML 2.0 logout, no NameID or issuing entityID found in session");
              session->unlock();
              app->getServiceProvider().getSessionCache()->remove(*app, *req.get(), resp.get());
         }
@@ -309,8 +306,14 @@ pair<bool,long> SAML2LogoutInitiator::doRequest(
         }
 
         const IDPSSODescriptor* role = dynamic_cast<const IDPSSODescriptor*>(entity.second);
-        const EndpointType* ep=NULL;
-        const MessageEncoder* encoder=NULL;
+        if (role->getSingleLogoutServices().empty()) {
+            throw MetadataException(
+                "No SingleLogoutService endpoints in metadata for identity provider ($entityID).", namedparams(1, "entityID", session->getEntityID())
+                );
+        }
+
+        const EndpointType* ep=nullptr;
+        const MessageEncoder* encoder=nullptr;
         vector<const XMLCh*>::const_iterator b;
         for (b = m_bindings.begin(); b!=m_bindings.end(); ++b) {
             if (ep=EndpointManager<SingleLogoutService>(role->getSingleLogoutServices()).getByBinding(*b)) {
@@ -326,7 +329,7 @@ pair<bool,long> SAML2LogoutInitiator::doRequest(
             shibsp::SOAPClient soaper(policy);
             MetadataCredentialCriteria mcc(*role);
 
-            LogoutResponse* logoutResponse=NULL;
+            LogoutResponse* logoutResponse=nullptr;
             auto_ptr_XMLCh binding(samlconstants::SAML20_BINDING_SOAP);
             const vector<SingleLogoutService*>& endpoints=role->getSingleLogoutServices();
             for (vector<SingleLogoutService*>::const_iterator epit=endpoints.begin(); !logoutResponse && epit!=endpoints.end(); ++epit) {
@@ -360,7 +363,7 @@ pair<bool,long> SAML2LogoutInitiator::doRequest(
             }
             else {
                 // Check the status, looking for non-success or a partial logout code.
-                const StatusCode* sc = logoutResponse->getStatus() ? logoutResponse->getStatus()->getStatusCode() : NULL;
+                const StatusCode* sc = logoutResponse->getStatus() ? logoutResponse->getStatus()->getStatusCode() : nullptr;
                 bool partial = (!sc || !XMLString::equals(sc->getValue(), StatusCode::SUCCESS));
                 if (!partial && sc->getStatusCode()) {
                     // Success, but still need to check for partial.
@@ -381,7 +384,7 @@ pair<bool,long> SAML2LogoutInitiator::doRequest(
 
             if (session) {
                 session->unlock();
-                session = NULL;
+                session = nullptr;
                 application.getServiceProvider().getSessionCache()->remove(application, httpRequest, &httpResponse);
             }
 
@@ -410,7 +413,7 @@ pair<bool,long> SAML2LogoutInitiator::doRequest(
 
     if (session) {
         session->unlock();
-        session = NULL;
+        session = nullptr;
         application.getServiceProvider().getSessionCache()->remove(application, httpRequest, &httpResponse);
     }
 

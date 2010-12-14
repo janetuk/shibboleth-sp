@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 /**
  * XMLAccessControl.cpp
  *
- * XML-based access control syntax
+ * XML-based access control syntax.
  */
 
 #include "internal.h"
@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <xmltooling/unicode.h>
 #include <xmltooling/util/ReloadableXMLFile.h>
+#include <xmltooling/util/Threads.h>
 #include <xmltooling/util/XMLHelper.h>
 #include <xercesc/util/XMLUniDefs.hpp>
 #include <xercesc/util/regx/RegularExpression.hpp>
@@ -104,18 +105,19 @@ namespace shibsp {
     {
     public:
         XMLAccessControl(const DOMElement* e)
-                : ReloadableXMLFile(e, Category::getInstance(SHIBSP_LOGCAT".AccessControl.XML")), m_rootAuthz(NULL) {
-            load(); // guarantees an exception or the policy is loaded
+                : ReloadableXMLFile(e, Category::getInstance(SHIBSP_LOGCAT".AccessControl.XML")), m_rootAuthz(nullptr) {
+            background_load(); // guarantees an exception or the policy is loaded
         }
 
         ~XMLAccessControl() {
+            shutdown();
             delete m_rootAuthz;
         }
 
         aclresult_t authorized(const SPRequest& request, const Session* session) const;
 
     protected:
-        pair<bool,DOMElement*> load();
+        pair<bool,DOMElement*> background_load();
 
     private:
         AccessControl* m_rootAuthz;
@@ -142,26 +144,24 @@ namespace shibsp {
     static const XMLCh _RuleRegex[] =       UNICODE_LITERAL_9(R,u,l,e,R,e,g,e,x);
 }
 
-Rule::Rule(const DOMElement* e)
+Rule::Rule(const DOMElement* e) : m_alias(XMLHelper::getAttrString(e, nullptr, require))
 {
-    auto_ptr_char req(e->getAttributeNS(NULL,require));
-    if (!req.get() || !*req.get())
+    if (m_alias.empty())
         throw ConfigurationException("Access control rule missing require attribute");
-    m_alias=req.get();
 
-    auto_arrayptr<char> vals(toUTF8(e->hasChildNodes() ? e->getFirstChild()->getNodeValue() : NULL));
+    auto_arrayptr<char> vals(toUTF8(e->hasChildNodes() ? e->getFirstChild()->getNodeValue() : nullptr));
     if (!vals.get())
         return;
 
-    const XMLCh* flag = e->getAttributeNS(NULL,_list);
-    if (flag && (*flag == chLatin_f || *flag == chDigit_0)) {
+    bool listflag = XMLHelper::getAttrBool(e, true, _list);
+    if (!listflag) {
         if (*vals.get())
             m_vals.push_back(vals.get());
         return;
     }
 
 #ifdef HAVE_STRTOK_R
-    char* pos=NULL;
+    char* pos=nullptr;
     const char* token=strtok_r(const_cast<char*>(vals.get())," ",&pos);
 #else
     const char* token=strtok(const_cast<char*>(vals.get())," ");
@@ -169,9 +169,9 @@ Rule::Rule(const DOMElement* e)
     while (token) {
         m_vals.push_back(token);
 #ifdef HAVE_STRTOK_R
-        token=strtok_r(NULL," ",&pos);
+        token=strtok_r(nullptr," ",&pos);
 #else
-        token=strtok(NULL," ");
+        token=strtok(nullptr," ");
 #endif
     }
 }
@@ -250,15 +250,14 @@ AccessControl::aclresult_t Rule::authorized(const SPRequest& request, const Sess
     return shib_acl_false;
 }
 
-RuleRegex::RuleRegex(const DOMElement* e) : m_exp(toUTF8(e->hasChildNodes() ? e->getFirstChild()->getNodeValue() : NULL))
+RuleRegex::RuleRegex(const DOMElement* e)
+    : m_alias(XMLHelper::getAttrString(e, nullptr, require)),
+        m_exp(toUTF8(e->hasChildNodes() ? e->getFirstChild()->getNodeValue() : nullptr))
 {
-    auto_ptr_char req(e->getAttributeNS(NULL,require));
-    if (!req.get() || !*req.get() || !m_exp.get() || !*m_exp.get())
+    if (m_alias.empty() || !m_exp.get() || !*m_exp.get())
         throw ConfigurationException("Access control rule missing require attribute or element content.");
-    m_alias=req.get();
 
-    const XMLCh* flag = e->getAttributeNS(NULL,ignoreCase);
-    bool ignore = (flag && (*flag == chLatin_t || *flag == chDigit_1));
+    bool ignore = XMLHelper::getAttrBool(e, false, ignoreCase);
     try {
         m_re = new RegularExpression(e->getFirstChild()->getNodeValue(), (ignore ? ignoreOption : &chNull));
     }
@@ -414,13 +413,13 @@ AccessControl::aclresult_t Operator::authorized(const SPRequest& request, const 
     return shib_acl_false;
 }
 
-pair<bool,DOMElement*> XMLAccessControl::load()
+pair<bool,DOMElement*> XMLAccessControl::background_load()
 {
     // Load from source using base class.
     pair<bool,DOMElement*> raw = ReloadableXMLFile::load();
 
     // If we own it, wrap it.
-    XercesJanitor<DOMDocument> docjanitor(raw.first ? raw.second->getOwnerDocument() : NULL);
+    XercesJanitor<DOMDocument> docjanitor(raw.first ? raw.second->getOwnerDocument() : nullptr);
 
     // Check for AccessControl wrapper and drop a level.
     if (XMLString::equals(raw.second->getLocalName(),_AccessControl))
@@ -434,9 +433,14 @@ pair<bool,DOMElement*> XMLAccessControl::load()
     else
         authz=new Operator(raw.second);
 
+    // Perform the swap inside a lock.
+    if (m_lock)
+        m_lock->wrlock();
+    SharedLock locker(m_lock, false);
     delete m_rootAuthz;
     m_rootAuthz = authz;
-    return make_pair(false,(DOMElement*)NULL);
+
+    return make_pair(false,(DOMElement*)nullptr);
 }
 
 AccessControl::aclresult_t XMLAccessControl::authorized(const SPRequest& request, const Session* session) const

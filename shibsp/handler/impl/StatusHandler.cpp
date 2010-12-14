@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,13 @@
 #include "handler/AbstractHandler.h"
 #include "handler/RemotedHandler.h"
 #include "util/CGIParser.h"
+
+#include <xmltooling/version.h>
+#include <xmltooling/util/DateTime.h>
+
+#ifdef HAVE_SYS_UTSNAME_H
+# include <sys/utsname.h>
+#endif
 
 using namespace shibsp;
 #ifndef SHIBSP_LITE
@@ -77,6 +84,7 @@ namespace shibsp {
 
     private:
         pair<bool,long> processMessage(const Application& application, const HTTPRequest& httpRequest, HTTPResponse& httpResponse) const;
+        ostream& systemInfo(ostream& os) const;
 
         set<string> m_acl;
     };
@@ -109,7 +117,7 @@ namespace shibsp {
     class DummyRequest : public HTTPRequest
     {
     public:
-        DummyRequest(const char* url) : m_parser(NULL), m_url(url), m_scheme(NULL), m_query(NULL), m_port(0) {
+        DummyRequest(const char* url) : m_parser(nullptr), m_url(url), m_scheme(nullptr), m_query(nullptr), m_port(0) {
 #ifdef HAVE_STRCASECMP
             if (url && !strncasecmp(url,"http://",7)) {
                 m_scheme="http";
@@ -204,7 +212,7 @@ namespace shibsp {
             return "";
         }
         const char* getRequestBody() const {
-            return NULL;
+            return nullptr;
         }
         const char* getQueryString() const {
             return m_query;
@@ -215,7 +223,7 @@ namespace shibsp {
                 m_parser=new CGIParser(*this);
 
             pair<CGIParser::walker,CGIParser::walker> bounds=m_parser->getParameters(name);
-            return (bounds.first==bounds.second) ? NULL : bounds.first->second;
+            return (bounds.first==bounds.second) ? nullptr : bounds.first->second;
         }
         vector<const char*>::size_type getParameters(const char* name, vector<const char*>& values) const
         {
@@ -293,16 +301,20 @@ pair<bool,long> StatusHandler::run(SPRequest& request, bool isHandler) const
         map<string,const char*> props;
         settings.first->getAll(props);
 
+        DateTime now(time(nullptr));
+        now.parseDateTime();
+        auto_ptr_char timestamp(now.getFormattedString());
         request.setContentType("text/xml");
         stringstream msg;
-        msg << "<StatusHandler>";
+        msg << "<StatusHandler time='" << timestamp.get() << "'>";
             msg << "<Version Xerces-C='" << XERCES_FULLVERSIONDOT
+                << "' XML-Tooling-C='" << XMLTOOLING_FULLVERSIONDOT
 #ifndef SHIBSP_LITE
                 << "' XML-Security-C='" << XSEC_FULLVERSIONDOT
                 << "' OpenSAML-C='" << OPENSAML_FULLVERSIONDOT
 #endif
                 << "' Shibboleth='" << PACKAGE_VERSION << "'/>";
-            msg << "<RequestSettings";
+            systemInfo(msg) << "<RequestSettings";
             for (map<string,const char*>::const_iterator p = props.begin(); p != props.end(); ++p)
                 msg << ' ' << p->first << "='" << p->second << "'";
             msg << '>' << target << "</RequestSettings>";
@@ -326,31 +338,39 @@ pair<bool,long> StatusHandler::run(SPRequest& request, bool isHandler) const
     }
     catch (XMLToolingException& ex) {
         m_log.error("error while processing request: %s", ex.what());
+        DateTime now(time(nullptr));
+        now.parseDateTime();
+        auto_ptr_char timestamp(now.getFormattedString());
         request.setContentType("text/xml");
         stringstream msg;
-        msg << "<StatusHandler>";
+        msg << "<StatusHandler time='" << timestamp.get() << "'>";
             msg << "<Version Xerces-C='" << XERCES_FULLVERSIONDOT
+                << "' XML-Tooling-C='" << XMLTOOLING_FULLVERSIONDOT
 #ifndef SHIBSP_LITE
                 << "' XML-Security-C='" << XSEC_FULLVERSIONDOT
                 << "' OpenSAML-C='" << OPENSAML_FULLVERSIONDOT
 #endif
                 << "' Shibboleth='" << PACKAGE_VERSION << "'/>";
-            msg << "<Status><Exception type='" << ex.getClassName() << "'>" << ex.what() << "</Exception></Status>";
+            systemInfo(msg) << "<Status><Exception type='" << ex.getClassName() << "'>" << ex.what() << "</Exception></Status>";
         msg << "</StatusHandler>";
         return make_pair(true,request.sendResponse(msg, HTTPResponse::XMLTOOLING_HTTP_STATUS_ERROR));
     }
     catch (exception& ex) {
         m_log.error("error while processing request: %s", ex.what());
+        DateTime now(time(nullptr));
+        now.parseDateTime();
+        auto_ptr_char timestamp(now.getFormattedString());
         request.setContentType("text/xml");
         stringstream msg;
-        msg << "<StatusHandler>";
+        msg << "<StatusHandler time='" << timestamp.get() << "'>";
             msg << "<Version Xerces-C='" << XERCES_FULLVERSIONDOT
+                << "' XML-Tooling-C='" << XMLTOOLING_FULLVERSIONDOT
 #ifndef SHIBSP_LITE
                 << "' XML-Security-C='" << XSEC_FULLVERSIONDOT
                 << "' OpenSAML-C='" << OPENSAML_FULLVERSIONDOT
 #endif
                 << "' Shibboleth='" << PACKAGE_VERSION << "'/>";
-            msg << "<Status><Exception type='std::exception'>" << ex.what() << "</Exception></Status>";
+            systemInfo(msg) << "<Status><Exception type='std::exception'>" << ex.what() << "</Exception></Status>";
         msg << "</StatusHandler>";
         return make_pair(true,request.sendResponse(msg, HTTPResponse::XMLTOOLING_HTTP_STATUS_ERROR));
     }
@@ -360,7 +380,7 @@ void StatusHandler::receive(DDF& in, ostream& out)
 {
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for status request", aid ? aid : "(missing)");
@@ -368,7 +388,7 @@ void StatusHandler::receive(DDF& in, ostream& out)
     }
 
     // Wrap a response shim.
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
     auto_ptr<HTTPRequest> req(getRequest(in));
     auto_ptr<HTTPResponse> resp(getResponse(ret));
@@ -387,16 +407,23 @@ pair<bool,long> StatusHandler::processMessage(
 #ifndef SHIBSP_LITE
     m_log.debug("processing status request");
 
+    DateTime now(time(nullptr));
+    now.parseDateTime();
+    auto_ptr_char timestamp(now.getFormattedString());
+
     stringstream s;
-    s << "<StatusHandler>";
+    s << "<StatusHandler time='" << timestamp.get() << "'>";
     const char* status = "<OK/>";
 
     s << "<Version Xerces-C='" << XERCES_FULLVERSIONDOT
+        << "' XML-Tooling-C='" << XMLTOOLING_FULLVERSIONDOT
         << "' XML-Security-C='" << XSEC_FULLVERSIONDOT
         << "' OpenSAML-C='" << OPENSAML_FULLVERSIONDOT
         << "' Shibboleth='" << PACKAGE_VERSION << "'/>";
 
-    const char* param = NULL;
+    systemInfo(s);
+
+    const char* param = nullptr;
     if (param) {
     }
     else {
@@ -420,7 +447,7 @@ pair<bool,long> StatusHandler::processMessage(
             status = "<Partial/>";
         }
 
-        const PropertySet* relyingParty=NULL;
+        const PropertySet* relyingParty=nullptr;
         param=httpRequest.getParameter("entityID");
         if (param) {
             MetadataProvider* m = application.getMetadataProvider();
@@ -487,4 +514,79 @@ pair<bool,long> StatusHandler::processMessage(
 #else
     return make_pair(false,0L);
 #endif
+}
+
+#ifdef WIN32
+typedef void (WINAPI *PGNSI)(LPSYSTEM_INFO);
+#endif
+
+ostream& StatusHandler::systemInfo(ostream& os) const
+{
+#if defined(HAVE_SYS_UTSNAME_H)
+    struct utsname sysinfo;
+    if (uname(&sysinfo) == 0) {
+        os << "<NonWindows";
+        if (*sysinfo.sysname)
+            os << " sysname='" << sysinfo.sysname << "'";
+        if (*sysinfo.nodename)
+            os << " nodename='" << sysinfo.nodename << "'";
+        if (*sysinfo.release)
+            os << " release='" << sysinfo.release << "'";
+        if (*sysinfo.version)
+            os << " version='" << sysinfo.version << "'";
+        if (*sysinfo.machine)
+            os << " machine='" << sysinfo.machine << "'";
+        os << "/>";
+    }
+#elif defined(WIN32)
+    OSVERSIONINFOEX osvi;
+    memset(&osvi, 0, sizeof(OSVERSIONINFOEX));
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+    if(GetVersionEx((OSVERSIONINFO*)&osvi)) {
+        os << "<Windows"
+           << " version='" << osvi.dwMajorVersion << "." << osvi.dwMinorVersion << "'"
+           << " build='" << osvi.dwBuildNumber << "'";
+        if (osvi.wServicePackMajor > 0)
+            os << " servicepack='" << osvi.wServicePackMajor << "." << osvi.wServicePackMinor << "'";
+        switch (osvi.wProductType) {
+            case VER_NT_WORKSTATION:
+                os << " producttype='Workstation'";
+                break;
+            case VER_NT_SERVER:
+            case VER_NT_DOMAIN_CONTROLLER:
+                os << " producttype='Server'";
+                break;
+        }
+
+        SYSTEM_INFO si;
+        memset(&si, 0, sizeof(SYSTEM_INFO));
+        PGNSI pGNSI = (PGNSI)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetNativeSystemInfo");
+        if(pGNSI)
+            pGNSI(&si);
+        else
+            GetSystemInfo(&si);
+        switch (si.dwProcessorType) {
+            case PROCESSOR_ARCHITECTURE_INTEL:
+                os << " arch='i386'";
+                break;
+            case PROCESSOR_ARCHITECTURE_AMD64:
+                os << " arch='x86_64'";
+                break;
+            case PROCESSOR_ARCHITECTURE_IA64:
+                os << " arch='IA64'";
+                break;
+        }
+        os << " cpucount='" << si.dwNumberOfProcessors << "'";
+
+        MEMORYSTATUSEX ms;
+        memset(&ms, 0, sizeof(MEMORYSTATUSEX));
+        ms.dwLength = sizeof(MEMORYSTATUSEX);
+        if (GlobalMemoryStatusEx(&ms)) {
+            os << " memory='" << (ms.ullTotalPhys / (1024 * 1024)) << "M'";
+        }
+
+        os << "/>";
+    }
+#endif
+    return os;
 }
