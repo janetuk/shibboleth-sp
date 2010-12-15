@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ class ShibTargetFCGIAuth : public AbstractSPRequest
 public:
     map<string,string> m_request_headers;
 
-    ShibTargetFCGIAuth(FCGX_Request* req, const char* scheme=NULL, const char* hostname=NULL, int port=0)
+    ShibTargetFCGIAuth(FCGX_Request* req, const char* scheme=nullptr, const char* hostname=nullptr, int port=0)
             : AbstractSPRequest(SHIBSP_LOGCAT".FastCGI"), m_req(req) {
         const char* server_name_str = hostname;
         if (!server_name_str || !*server_name_str)
@@ -216,6 +216,7 @@ public:
         // so custom Shib errors will get turned into a generic page.
         const char* codestr="Status: 500 Server Error";
         switch (status) {
+            case XMLTOOLING_HTTP_STATUS_NOTMODIFIED:    codestr="Status: 304 Not Modified"; break;
             case XMLTOOLING_HTTP_STATUS_UNAUTHORIZED:   codestr="Status: 401 Authorization Required"; break;
             case XMLTOOLING_HTTP_STATUS_FORBIDDEN:      codestr="Status: 403 Forbidden"; break;
             case XMLTOOLING_HTTP_STATUS_NOTFOUND:       codestr="Status: 404 Not Found"; break;
@@ -289,7 +290,7 @@ int main(void)
     }
 
     try {
-        if (!g_Config->instantiate(NULL, true))
+        if (!g_Config->instantiate(nullptr, true))
             throw runtime_error("unknown error");
     }
     catch (exception& ex) {

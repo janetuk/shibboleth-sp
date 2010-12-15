@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 #include "exceptions.h"
 #include "AbstractSPRequest.h"
 #include "Application.h"
+#include "GSSRequest.h"
 #include "ServiceProvider.h"
 #include "SessionCache.h"
 #include "util/CGIParser.h"
@@ -50,9 +51,19 @@ void SPRequest::setAuthType(const char* authtype)
 {
 }
 
+#ifdef HAVE_GSSAPI
+GSSRequest::GSSRequest()
+{
+}
+
+GSSRequest::~GSSRequest()
+{
+}
+#endif
+
 AbstractSPRequest::AbstractSPRequest(const char* category)
-    : m_sp(NULL), m_mapper(NULL), m_app(NULL), m_sessionTried(false), m_session(NULL),
-        m_log(&Category::getInstance(category)), m_parser(NULL)
+    : m_sp(nullptr), m_mapper(nullptr), m_app(nullptr), m_sessionTried(false), m_session(nullptr),
+        m_log(&Category::getInstance(category)), m_parser(nullptr)
 {
     m_sp=SPConfig::getConfig().getServiceProvider();
     m_sp->lock();
@@ -97,7 +108,7 @@ const Application& AbstractSPRequest::getApplication() const
         // Now find the application from the URL settings
         m_app=m_sp->getApplication(getRequestSettings().first->getString("applicationId").second);
         if (!m_app)
-            throw ConfigurationException("Unable to map request to ApplicationOverride settings, check configuration.");
+            throw ConfigurationException("Unable to map non-default applicationId to an ApplicationOverride, check configuration.");
     }
     return *m_app;
 }
@@ -126,9 +137,9 @@ Session* AbstractSPRequest::getSession(bool checkTimeout, bool ignoreAddress, bo
         }
     }
 
-    // The cache will either silently pass a session or NULL back, or throw an exception out.
+    // The cache will either silently pass a session or nullptr back, or throw an exception out.
     Session* session = getServiceProvider().getSessionCache()->find(
-        getApplication(), *this, ignoreAddress ? NULL : getRemoteAddr().c_str(), checkTimeout ? &timeout : NULL
+        getApplication(), *this, ignoreAddress ? nullptr : getRemoteAddr().c_str(), checkTimeout ? &timeout : nullptr
         );
     if (cache)
         m_session = session;
@@ -205,7 +216,7 @@ const char* AbstractSPRequest::getParameter(const char* name) const
         m_parser=new CGIParser(*this);
 
     pair<CGIParser::walker,CGIParser::walker> bounds=m_parser->getParameters(name);
-    return (bounds.first==bounds.second) ? NULL : bounds.first->second;
+    return (bounds.first==bounds.second) ? nullptr : bounds.first->second;
 }
 
 vector<const char*>::size_type AbstractSPRequest::getParameters(const char* name, vector<const char*>& values) const
@@ -229,6 +240,21 @@ const char* AbstractSPRequest::getHandlerURL(const char* resource) const
     if (!m_handlerURL.empty() && resource && !strcmp(getRequestURL(),resource))
         return m_handlerURL.c_str();
 
+    string stackresource;
+    if (resource && *resource == '/') {
+        // Compute a URL to the root of the site and point resource at constructed string.
+        int port = getPort();
+        const char* scheme = getScheme();
+        stackresource = string(scheme) + "://" + getHostname();
+        if ((!strcmp(scheme,"http") && port!=80) || (!strcmp(scheme,"https") && port!=443)) {
+            ostringstream portstr;
+            portstr << port;
+            stackresource += ":" + portstr.str();
+        }
+        stackresource += resource;
+        resource = stackresource.c_str();
+    }
+
 #ifdef HAVE_STRCASECMP
     if (!resource || (strncasecmp(resource,"http://",7) && strncasecmp(resource,"https://",8)))
 #else
@@ -237,7 +263,7 @@ const char* AbstractSPRequest::getHandlerURL(const char* resource) const
         throw ConfigurationException("Target resource was not an absolute URL.");
 
     bool ssl_only=true;
-    const char* handler=NULL;
+    const char* handler=nullptr;
     const PropertySet* props=getApplication().getPropertySet("Sessions");
     if (props) {
         pair<bool,bool> p=props->getBool("handlerSSL");
@@ -248,12 +274,15 @@ const char* AbstractSPRequest::getHandlerURL(const char* resource) const
             handler=p2.second;
     }
 
-    // Should never happen...
-    if (!handler || (*handler!='/' && strncmp(handler,"http:",5) && strncmp(handler,"https:",6)))
+    if (!handler) {
+        handler = "/Shibboleth.sso";
+    }
+    else if (*handler!='/' && strncmp(handler,"http:",5) && strncmp(handler,"https:",6)) {
         throw ConfigurationException(
             "Invalid handlerURL property ($1) in <Sessions> element for Application ($2)",
             params(2, handler ? handler : "null", m_app->getId())
             );
+    }
 
     // The "handlerURL" property can be in one of three formats:
     //
@@ -268,7 +297,7 @@ const char* AbstractSPRequest::getHandlerURL(const char* resource) const
     //
     // note: if ssl_only is true, make sure the protocol is https
 
-    const char* path = NULL;
+    const char* path = nullptr;
 
     // Decide whether to use the handler or the resource for the "protocol"
     const char* prot;

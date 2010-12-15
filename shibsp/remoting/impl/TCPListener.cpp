@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 /**
  * TCPListener.cpp
  *
- * TCP-based SocketListener implementation
+ * TCP-based SocketListener implementation.
  */
 
 #include "internal.h"
@@ -25,6 +25,7 @@
 
 #include <xercesc/util/XMLUniDefs.hpp>
 #include <xmltooling/unicode.h>
+#include <xmltooling/util/XMLHelper.h>
 
 #ifdef HAVE_UNISTD_H
 # include <sys/socket.h>
@@ -46,10 +47,6 @@ using namespace xercesc;
 using namespace std;
 
 namespace shibsp {
-    static const XMLCh address[] = UNICODE_LITERAL_7(a,d,d,r,e,s,s);
-    static const XMLCh port[] = UNICODE_LITERAL_4(p,o,r,t);
-    static const XMLCh acl[] = UNICODE_LITERAL_3(a,c,l);
-
     class TCPListener : virtual public SocketListener
     {
     public:
@@ -82,41 +79,37 @@ namespace shibsp {
     {
         return new TCPListener(e);
     }
+
+    static const XMLCh address[] = UNICODE_LITERAL_7(a,d,d,r,e,s,s);
+    static const XMLCh port[] = UNICODE_LITERAL_4(p,o,r,t);
+    static const XMLCh acl[] = UNICODE_LITERAL_3(a,c,l);
 };
 
-TCPListener::TCPListener(const DOMElement* e) : SocketListener(e), m_address("127.0.0.1"), m_port(12345)
+TCPListener::TCPListener(const DOMElement* e)
+    : SocketListener(e),
+      m_address(XMLHelper::getAttrString(e, getenv("SHIBSP_LISTENER_ADDRESS"), address)),
+      m_port(XMLHelper::getAttrInt(e, 0, port))
 {
-    // We're stateless, but we need to load the configuration.
-    const XMLCh* tag=e->getAttributeNS(NULL,address);
-    if (tag && *tag) {
-        auto_ptr_char a(tag);
-        m_address=a.get();
+    if (m_address.empty())
+        m_address = "127.0.0.1";
+
+    if (m_port == 0) {
+        const char* p = getenv("SHIBSP_LISTENER_PORT");
+        if (p && *p)
+            m_port = atoi(p);
+        if (m_port == 0)
+            m_port = 1600;
     }
 
-    tag=e->getAttributeNS(NULL,port);
-    if (tag && *tag) {
-        m_port=XMLString::parseInt(tag);
-        if (m_port==0)
-            m_port=12345;
-    }
-
-    tag=e->getAttributeNS(NULL,acl);
-    if (tag && *tag) {
-        auto_ptr_char temp(tag);
-        string sockacl=temp.get();
-        if (sockacl.length()) {
-            int j = 0;
-            for (unsigned int i=0;  i < sockacl.length();  i++) {
-                if (sockacl.at(i)==' ') {
-                    m_acl.insert(sockacl.substr(j, i-j));
-                    j = i+1;
-                }
-            }
-            m_acl.insert(sockacl.substr(j, sockacl.length()-j));
+    int j = 0;
+    string sockacl = XMLHelper::getAttrString(e, "127.0.0.1", acl);
+    for (unsigned int i = 0;  i < sockacl.length();  i++) {
+        if (sockacl.at(i) == ' ') {
+            m_acl.insert(sockacl.substr(j, i-j));
+            j = i+1;
         }
     }
-    else
-        m_acl.insert("127.0.0.1");
+    m_acl.insert(sockacl.substr(j, sockacl.length()-j));
 }
 
 void TCPListener::setup_tcp_sockaddr(struct sockaddr_in* addr) const

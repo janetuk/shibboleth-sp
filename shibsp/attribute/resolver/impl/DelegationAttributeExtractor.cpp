@@ -1,5 +1,5 @@
 /*
- *  Copyright 2009 Internet2
+ *  Copyright 2009-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,20 +86,10 @@ namespace shibsp {
     static const XMLCh formatter[] =    UNICODE_LITERAL_9(f,o,r,m,a,t,t,e,r);
 };
 
-DelegationExtractor::DelegationExtractor(const DOMElement* e) : m_attributeId("delegate"), m_formatter("$Name")
+DelegationExtractor::DelegationExtractor(const DOMElement* e)
+    : m_attributeId(XMLHelper::getAttrString(e, "delegate", attributeId)),
+        m_formatter(XMLHelper::getAttrString(e, "$Name", formatter))
 {
-    if (e) {
-        const XMLCh* a = e->getAttributeNS(NULL, attributeId);
-        if (a && *a) {
-            auto_ptr_char temp(a);
-            m_attributeId = temp.get();
-        }
-        a = e->getAttributeNS(NULL, formatter);
-        if (a && *a) {
-            auto_ptr_char temp(a);
-            m_formatter = temp.get();
-        }
-    }
 }
 
 void DelegationExtractor::extractAttributes(
@@ -125,7 +115,7 @@ void DelegationExtractor::extractAttributes(
                     continue;
                 }
 
-                saml2::NameID* n = NULL;
+                saml2::NameID* n = nullptr;
                 if ((*d)->getEncryptedID()) {
                     CredentialResolver* cr = application.getCredentialResolver();
                     if (!cr) {
@@ -134,7 +124,7 @@ void DelegationExtractor::extractAttributes(
 
                     try {
                         const XMLCh* recipient = application.getRelyingParty(
-                            issuer ? dynamic_cast<EntityDescriptor*>(issuer->getParent()) : NULL
+                            issuer ? dynamic_cast<EntityDescriptor*>(issuer->getParent()) : nullptr
                             )->getXMLString("entityID").second;
                         Locker credlocker(cr);
                         if (issuer) {
@@ -158,7 +148,7 @@ void DelegationExtractor::extractAttributes(
                 }
 
                 if (n) {
-                    DDF val = DDF(NULL).structure();
+                    DDF val = DDF(nullptr).structure();
                     if ((*d)->getConfirmationMethod()) {
                         auto_ptr_char temp((*d)->getConfirmationMethod());
                         val.addmember("ConfirmationMethod").string(temp.get());

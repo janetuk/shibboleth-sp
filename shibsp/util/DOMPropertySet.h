@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,11 +41,11 @@ namespace shibsp {
 
         const PropertySet* getParent() const;
         void setParent(const PropertySet* parent);
-        std::pair<bool,bool> getBool(const char* name, const char* ns=NULL) const;
-        std::pair<bool,const char*> getString(const char* name, const char* ns=NULL) const;
-        std::pair<bool,const XMLCh*> getXMLString(const char* name, const char* ns=NULL) const;
-        std::pair<bool,unsigned int> getUnsignedInt(const char* name, const char* ns=NULL) const;
-        std::pair<bool,int> getInt(const char* name, const char* ns=NULL) const;
+        std::pair<bool,bool> getBool(const char* name, const char* ns=nullptr) const;
+        std::pair<bool,const char*> getString(const char* name, const char* ns=nullptr) const;
+        std::pair<bool,const XMLCh*> getXMLString(const char* name, const char* ns=nullptr) const;
+        std::pair<bool,unsigned int> getUnsignedInt(const char* name, const char* ns=nullptr) const;
+        std::pair<bool,int> getInt(const char* name, const char* ns=nullptr) const;
         void getAll(std::map<std::string,const char*>& properties) const;
         const PropertySet* getPropertySet(const char* name, const char* ns=shibspconstants::ASCII_SHIB2SPCONFIG_NS) const;
         const xercesc::DOMElement* getElement() const;
@@ -60,16 +60,28 @@ namespace shibsp {
          */
         void load(
             const xercesc::DOMElement* e,
-            xmltooling::logging::Category* log=NULL,
-            xercesc::DOMNodeFilter* filter=NULL,
-            const std::map<std::string,std::string>* remapper=NULL
+            xmltooling::logging::Category* log=nullptr,
+            xercesc::DOMNodeFilter* filter=nullptr,
+            const std::map<std::string,std::string>* remapper=nullptr
             );
+
+    protected:
+        /**
+         * Post-load injection of a property, for use by subclasses.
+         *
+         * @param name  property name
+         * @param val   property value
+         * @param ns    property namespace
+         * @return  true iff the property was successfully set
+         */
+        bool setProperty(const char* name, const char* val, const char* ns=nullptr);
 
     private:
         const PropertySet* m_parent;
         const xercesc::DOMElement* m_root;
         std::map<std::string,std::pair<char*,const XMLCh*> > m_map;
         std::map<std::string,DOMPropertySet*> m_nested;
+        std::vector<xmltooling::xstring> m_injected;
     };
 
 };

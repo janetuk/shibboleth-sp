@@ -99,12 +99,11 @@ start)
 stop)
     echo -n "Stopping $DESC: "
     start-stop-daemon --stop --quiet --pidfile $PIDFILE \
-        --exec $DAEMON
+        --retry TERM/30/KILL/5 --exec $DAEMON
     echo "$NAME."
     ;;
 restart|force-reload)
     prepare_environment
-
     echo -n "Restarting $DESC: "
     start-stop-daemon --stop --quiet --pidfile $PIDFILE \
         --exec $DAEMON

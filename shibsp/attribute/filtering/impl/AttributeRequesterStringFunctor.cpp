@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,9 @@
 #include "attribute/filtering/FilterPolicyContext.h"
 #include "attribute/filtering/MatchFunctor.h"
 
+#include <xmltooling/util/XMLHelper.h>
+using xmltooling::XMLHelper;
+
 namespace shibsp {
 
     static const XMLCh value[] = UNICODE_LITERAL_5(v,a,l,u,e);
@@ -39,12 +42,10 @@ namespace shibsp {
         const XMLCh* m_value;
         bool m_ignoreCase;
     public:
-        AttributeRequesterStringFunctor(const DOMElement* e) {
-            m_value = e ? e->getAttributeNS(NULL,value) : NULL;
+        AttributeRequesterStringFunctor(const DOMElement* e) : m_value(nullptr), m_ignoreCase(XMLHelper::getAttrBool(e, false, ignoreCase)) {
+            m_value = e ? e->getAttributeNS(nullptr,value) : nullptr;
             if (!m_value || !*m_value)
                 throw ConfigurationException("AttributeRequesterString MatchFunctor requires non-empty value attribute.");
-            const XMLCh* flag = e ? e->getAttributeNS(NULL,ignoreCase) : NULL;
-            m_ignoreCase = (flag && (*flag == chLatin_t || *flag == chDigit_1)); 
         }
 
         bool evaluatePolicyRequirement(const FilteringContext& filterContext) const {

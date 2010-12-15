@@ -1,10 +1,10 @@
-## $Id: Makefile.am 3168 2009-10-31 20:34:11Z cantor $ 
+## $Id: Makefile.am 3293 2010-08-13 04:23:23Z cantor $ 
 
 AUTOMAKE_OPTIONS = foreign
 
 pkglibdir = ${libdir}/@PACKAGE@
 pkglogdir = ${localstatedir}/log/@PACKAGE@
-pkgdocdir = ${datadir}/doc/@PACKAGE@
+pkgdocdir = $(datadir)/doc/@PACKAGE@
 shirelogdir = ${localstatedir}/log/apache2
 pkgxmldir = $(datadir)/xml/@PACKAGE@
 pkgrundir = $(localstatedir)/run/@PACKAGE@
@@ -35,7 +35,10 @@ CONFIGFILES = \
 	shibboleth2.xml \
 	attribute-map.xml \
 	attribute-policy.xml \
+	protocols.xml \
+	security-policy.xml \
 	example-metadata.xml \
+	example-shibboleth2.xml \
 	console.logger \
 	syslog.logger \
 	accessError.html \

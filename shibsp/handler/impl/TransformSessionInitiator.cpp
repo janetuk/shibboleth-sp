@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2007 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -85,6 +85,7 @@ namespace shibsp {
                 string address = m_appId + loc.second + "::run::TransformSI";
                 setAddress(address.c_str());
             }
+            m_supportedOptions.insert("isPassive");
 
 #ifndef SHIBSP_LITE
             if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
@@ -92,17 +93,19 @@ namespace shibsp {
                 e = XMLHelper::getFirstChildElement(e);
                 while (e) {
                     if (e->hasChildNodes()) {
-                        const XMLCh* flag = e->getAttributeNS(NULL, force);
+                        const XMLCh* flag = e->getAttributeNS(nullptr, force);
                         if (!flag)
                             flag = &chNull;
                         if (XMLString::equals(e->getLocalName(), Subst)) {
                             auto_ptr_char temp(e->getFirstChild()->getNodeValue());
-                            m_subst.push_back(pair<bool,string>((*flag==chDigit_1 || *flag==chLatin_t), temp.get()));
+                            if (temp.get() && *temp.get())
+                                m_subst.push_back(pair<bool,string>((*flag==chDigit_1 || *flag==chLatin_t), temp.get()));
                         }
-                        else if (XMLString::equals(e->getLocalName(), Regex) && e->hasAttributeNS(NULL, match)) {
-                            auto_ptr_char m(e->getAttributeNS(NULL, match));
+                        else if (XMLString::equals(e->getLocalName(), Regex) && e->hasAttributeNS(nullptr, match)) {
+                            auto_ptr_char m(e->getAttributeNS(nullptr, match));
                             auto_ptr_char repl(e->getFirstChild()->getNodeValue());
-                            m_regex.push_back(make_pair((*flag==chDigit_1 || *flag==chLatin_t), pair<string,string>(m.get(), repl.get())));
+                            if (m.get() && *m.get() && repl.get() && *repl.get())
+                                m_regex.push_back(make_pair((*flag==chDigit_1 || *flag==chLatin_t), pair<string,string>(m.get(), repl.get())));
                         }
                         else {
                             m_log.warn("Unknown element found in Transform SessionInitiator configuration, check for errors.");
@@ -157,10 +160,9 @@ void TransformSessionInitiator::setParent(const PropertySet* parent)
 pair<bool,long> TransformSessionInitiator::run(SPRequest& request, string& entityID, bool isHandler) const
 {
     // We have to have a candidate name to function.
-    if (entityID.empty())
+    if (entityID.empty() || !checkCompatibility(request, isHandler))
         return make_pair(false,0L);
 
-    string target;
     const Application& app=request.getApplication();
 
     m_log.debug("attempting to transform input (%s) into a valid entityID", entityID.c_str());
@@ -187,7 +189,7 @@ void TransformSessionInitiator::receive(DDF& in, ostream& out)
 {
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) to generate AuthnRequest", aid ? aid : "(missing)");
@@ -200,7 +202,7 @@ void TransformSessionInitiator::receive(DDF& in, ostream& out)
 
     string copy(entityID);
     doRequest(*app, copy);
-    DDF ret = DDF(NULL).string(copy.c_str());
+    DDF ret = DDF(nullptr).string(copy.c_str());
     DDFJanitor jout(ret);
     out << ret;
 }

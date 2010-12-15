@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,7 +89,7 @@ namespace shibsp {
             const Application& application,
             const xmltooling::HTTPRequest& request,
             xmltooling::HTTPResponse& response,
-            const std::map<std::string,std::string>* params=NULL
+            const std::map<std::string,std::string>* params=nullptr
             ) const;
 
         /**
@@ -120,7 +120,7 @@ namespace shibsp {
             const xmltooling::HTTPRequest& request,
             xmltooling::HTTPResponse& response,
             bool local=true,
-            const char* status=NULL
+            const char* status=nullptr
             ) const;
 
         /**
@@ -142,16 +142,6 @@ namespace shibsp {
 #if defined (_MSC_VER)
     #pragma warning( pop )
 #endif
-
-    /** LogoutInitiator that iterates through a set of protocol-specific versions. */
-    #define CHAINING_LOGOUT_INITIATOR "Chaining"
-
-    /** LogoutInitiator that supports SAML 2.0 LogoutRequests. */
-    #define SAML2_LOGOUT_INITIATOR "SAML2"
-
-    /** LogoutInitiator that supports local-only logout. */
-    #define LOCAL_LOGOUT_INITIATOR "Local"
-
 };
 
 #endif /* __shibsp_logout_h__ */
