@@ -1,7 +1,36 @@
+shibboleth-sp2 (2.3.1+dfsg-5) UNRELEASED; urgency=low
+
+  [ Ferenc Wagner ]
+  * Fix watch file.  The 2.4 prerelease broke it.
+
+  [ Faidon Liambotis ]
+  * Enable and ship memcache-store.
+
+ -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
+
+shibboleth-sp2 (2.3.1+dfsg-4) unstable; urgency=low
+
+  * Only restart Apache if it is running.  Thanks, Mehdi Dogguy, Michael
+    Biebl, and Ferenc Wagner.
+
+ -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 14:29:42 -0800
+
+shibboleth-sp2 (2.3.1+dfsg-3) unstable; urgency=low
+
+  [ Ferenc Wagner ]
+  * Restart Apache from the postinst script if the shib2 module is enabled
+    to avoid communication errors with the upgraded shibd.  (Closes: #602328)
+
+  [ Faidon Liambotis ]
+  * Add myself to Uploaders.
+  * Enable and ship memcache-store.
+
+ -- Ferenc Wagner <wferi@niif.hu>  Mon, 22 Nov 2010 22:17:57 +0100
+
 shibboleth-sp2 (2.3.1+dfsg-2) unstable; urgency=low
 
   * Modify shib-keygen to create the new certificate key group-readable by
-    _shibd and not world-readable.  (Closes: #571631)
+    _shibd and not world-readable.  (Closes: #571631, CVE-2010-2450)
   * Force source format 1.0 for now since it makes backporting easier.
   * Update debhelper compatibility level to V7.
     - Use dh_prep instead of dh_clean -k.

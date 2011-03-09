@@ -30,6 +30,14 @@ if [ "$1" = "configure" ] ; then
         adduser --system --group --quiet --home /var/log/shibboleth \
             --no-create-home --disabled-login --force-badname _shibd
     fi
+
+    # The new shibd (which is about to be started) requires the corresponding
+    # Apache module, otherwise strange, hard to debug error messages result.
+    if [ -f /etc/apache2/mods-enabled/shib2.load ] ; then
+        if invoke-rc.d apache2 status >/dev/null 2>&1 ; then
+            invoke-rc.d apache2 restart
+        fi
+    fi
 fi
 
 #DEBHELPER#
