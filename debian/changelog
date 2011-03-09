@@ -1,4 +1,4 @@
-shibboleth-sp2 (2.3.1+dfsg-5) UNRELEASED; urgency=low
+shibboleth-sp2 (2.3.1+dfsg-6) UNRELEASED; urgency=low
 
   [ Ferenc Wagner ]
   * Fix watch file.  The 2.4 prerelease broke it.
@@ -7,6 +7,19 @@ shibboleth-sp2 (2.3.1+dfsg-5) UNRELEASED; urgency=low
   * Enable and ship memcache-store.
 
  -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
+
+shibboleth-sp2 (2.3.1+dfsg-5) unstable; urgency=high
+
+  * Merge the forgotten pidfile fix from branch bug/unlink-pidfile after
+    merging upstream/2.3.1+dfsg into that.  Original changlog entry:
+
+    Apply upstream fix for shibd removing the PID file when called with
+    the -F option.  This prevents the check of certificate permissions in
+    the init script from removing the PID file of a running shibd.
+
+    (Closes: 611614)
+
+ -- Ferenc Wagner <wferi@niif.hu>  Tue, 01 Feb 2011 16:44:15 +0100
 
 shibboleth-sp2 (2.3.1+dfsg-4) unstable; urgency=low
 
