@@ -37,14 +37,14 @@ using namespace std;
 
 namespace shibsp {
 #ifdef HAVE_GSSAPI_NAMINGEXTS
-    PluginManager<AttributeExtractor,string,const DOMElement*>::Factory GSSAPIExtractorFactory;
+    PluginManager<AttributeExtractor,string,const DOMElement*>::Factory GSSAPIAttributeExtractorFactory;
 #endif
 };
 
 extern "C" int PLUGINS_EXPORTS xmltooling_extension_init(void*)
 {
 #ifdef HAVE_GSSAPI_NAMINGEXTS
-    SPConfig::getConfig().AttributeExtractorManager.registerFactory("GSSAPI", GSSAPIExtractorFactory);
+    SPConfig::getConfig().AttributeExtractorManager.registerFactory("GSSAPI", GSSAPIAttributeExtractorFactory);
     static const XMLCh _GSSAPI[] = UNICODE_LITERAL_6(G,S,S,A,P,I);
     XMLObjectBuilder::registerBuilder(xmltooling::QName(shibspconstants::SHIB2ATTRIBUTEMAP_NS, _GSSAPI), new AnyElementBuilder());
 #endif
