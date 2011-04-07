@@ -41,7 +41,7 @@ get-orig-source:
 	mv shibboleth-$(VERSION) shibboleth-sp2_$(DEBVERS).orig
 	tar cf shibboleth-sp2_$(DEBVERS).orig.tar \
 	    shibboleth-sp2_$(DEBVERS).orig
-	rm -r shibboleth-sp2_$(DEBVERS).orig
+	rm -rf shibboleth-sp2_$(DEBVERS).orig
 	gzip -9 shibboleth-sp2_$(DEBVERS).orig.tar
 
 configure: configure-stamp
