@@ -40,6 +40,9 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
   * Add build dependency on pkg-config, which upstream now uses to find
     the SSL libraries.
   * Add build dependency on graphviz for better API documentation.
+  * Replace the version of jQuery installed by Doxygen in the
+    documentation package with a symlink to the version supplied by the
+    Debian package and add a dependency.
   * Update to debhelper compatibility level V8.
     - Use debhelper rule minimization.
   * Update debian/copyright to the current DEP-5 specification.
