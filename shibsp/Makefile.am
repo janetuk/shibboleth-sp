@@ -31,6 +31,7 @@ libshibspinclude_HEADERS = \
 	base.h \
 	exceptions.h \
 	paths.h \
+	GSSRequest.h \
 	RequestMapper.h \
 	ServiceProvider.h \
 	SessionCache.h \
@@ -63,6 +64,7 @@ attrresinclude_HEADERS = \
 
 bindinclude_HEADERS = \
 	binding/ArtifactResolver.h \
+	binding/ProtocolProvider.h \
 	binding/SOAPClient.h
 
 handinclude_HEADERS = \
@@ -70,6 +72,7 @@ handinclude_HEADERS = \
 	handler/AssertionConsumerService.h \
 	handler/Handler.h \
 	handler/LogoutHandler.h \
+	handler/LogoutInitiator.h \
 	handler/RemotedHandler.h \
 	handler/SessionInitiator.h
 
@@ -87,7 +90,8 @@ reminclude_HEADERS = \
 	
 secinclude_HEADERS = \
 	security/PKIXTrustEngine.h \
-	security/SecurityPolicy.h
+	security/SecurityPolicy.h \
+	security/SecurityPolicyProvider.h
 
 utilinclude_HEADERS = \
 	util/CGIParser.h \
@@ -111,15 +115,18 @@ common_sources = \
 	attribute/SimpleAttribute.cpp \
 	attribute/ScopedAttribute.cpp \
 	attribute/XMLAttribute.cpp \
+	binding/impl/XMLProtocolProvider.cpp \
 	handler/impl/AbstractHandler.cpp \
 	handler/impl/AssertionConsumerService.cpp \
 	handler/impl/AssertionLookup.cpp \
 	handler/impl/ChainingLogoutInitiator.cpp \
 	handler/impl/ChainingSessionInitiator.cpp \
 	handler/impl/CookieSessionInitiator.cpp \
+	handler/impl/DiscoveryFeed.cpp \
 	handler/impl/FormSessionInitiator.cpp \
 	handler/impl/LocalLogoutInitiator.cpp \
 	handler/impl/LogoutHandler.cpp \
+	handler/impl/LogoutInitiator.cpp \
 	handler/impl/MetadataGenerator.cpp \
 	handler/impl/RemotedHandler.cpp \
 	handler/impl/StatusHandler.cpp \
@@ -158,6 +165,7 @@ libshibsp_lite_la_SOURCES = \
 
 libshibsp_la_SOURCES = \
 	${common_sources} \
+	attribute/Base64AttributeDecoder.cpp \
 	attribute/DOMAttributeDecoder.cpp \
 	attribute/KeyInfoAttributeDecoder.cpp \
 	attribute/NameIDAttributeDecoder.cpp \
@@ -167,6 +175,7 @@ libshibsp_la_SOURCES = \
 	attribute/XMLAttributeDecoder.cpp \
 	attribute/filtering/impl/AttributeFilter.cpp \
 	attribute/filtering/impl/ChainingAttributeFilter.cpp \
+	attribute/filtering/impl/DummyAttributeFilter.cpp \
 	attribute/filtering/impl/XMLAttributeFilter.cpp \
 	attribute/filtering/impl/BasicFilteringContext.cpp \
 	attribute/filtering/impl/MatchFunctor.cpp \
@@ -184,6 +193,7 @@ libshibsp_la_SOURCES = \
 	attribute/filtering/impl/AttributeScopeRegexFunctor.cpp \
 	attribute/filtering/impl/AttributeValueRegexFunctor.cpp \
 	attribute/filtering/impl/AuthenticationMethodRegexFunctor.cpp \
+	attribute/filtering/impl/NameIDQualifierStringFunctor.cpp \
 	attribute/filtering/impl/NumberOfAttributeValuesFunctor.cpp \
 	attribute/filtering/impl/AttributeIssuerInEntityGroupFunctor.cpp \
 	attribute/filtering/impl/AttributeRequesterInEntityGroupFunctor.cpp \
@@ -197,6 +207,7 @@ libshibsp_la_SOURCES = \
 	attribute/resolver/impl/XMLAttributeExtractor.cpp \
 	binding/impl/ArtifactResolver.cpp \
 	binding/impl/SOAPClient.cpp \
+	impl/XMLSecurityPolicyProvider.cpp \
 	metadata/DynamicMetadataProvider.cpp \
 	metadata/MetadataExtImpl.cpp \
 	metadata/MetadataExtSchemaValidators.cpp \
@@ -206,12 +217,14 @@ libshibsp_la_SOURCES = \
 
 # this is different from the project version
 # http://sources.redhat.com/autobook/autobook/autobook_91.html
-libshibsp_la_LDFLAGS = $(XMLSEC_LIBS) -version-info 4:1:0
-libshibsp_lite_la_LDFLAGS = $(LITE_LIBS) -version-info 4:1:0
+libshibsp_la_LDFLAGS = -version-info 5:2:0
+libshibsp_la_LIBADD = $(XMLSEC_LIBS)
+libshibsp_lite_la_LDFLAGS = -version-info 5:2:0
+libshibsp_lite_la_LIBADD = $(LITE_LIBS)
 libshibsp_lite_la_CPPFLAGS = -DSHIBSP_LITE
 
-pkgsysconfdir = $(sysconfdir)/@PACKAGE@
-pkgxmldir = $(datadir)/xml/@PACKAGE@
+pkgsysconfdir = $(sysconfdir)/@PACKAGE_NAME@
+pkgxmldir = $(datadir)/xml/@PACKAGE_NAME@
 logdir = ${localstatedir}/log
 rundir = $(localstatedir)/run
 xmldir = $(datadir)/xml
@@ -235,5 +248,12 @@ paths.h: ${srcdir}/paths.h.in Makefile ${top_builddir}/config.status
 install-exec-hook:
 	for la in $(lib_LTLIBRARIES) ; do rm -f $(DESTDIR)$(libdir)/$$la ; done
 
-EXTRA_DIST = shibsp.vcproj shibsp-lite.vcproj paths.h.in resource.h shibsp.rc
+EXTRA_DIST = \
+	shibsp.vcxproj \
+	shibsp-lite.vcxproj \
+	shibsp.vcxproj.filters \
+	shibsp-lite.vcxproj.filters \
+	paths.h.in \
+	resource.h \
+	shibsp.rc
 BUILT_SOURCES = paths.h

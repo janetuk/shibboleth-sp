@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,19 +17,22 @@
 /**
  * SocketListener.cpp
  *
- * Berkeley Socket-based ListenerService implementation
+ * Berkeley Socket-based ListenerService implementation.
  */
 
 #include "internal.h"
 #include "exceptions.h"
 #include "ServiceProvider.h"
+#include "SPConfig.h"
 #include "remoting/impl/SocketListener.h"
 
 #include <errno.h>
 #include <stack>
 #include <sstream>
-#include <shibsp/SPConfig.h>
+#include <xercesc/util/XMLUniDefs.hpp>
+
 #include <xmltooling/util/NDC.h>
+#include <xmltooling/util/XMLHelper.h>
 
 #ifndef WIN32
 # include <netinet/in.h>
@@ -159,8 +162,8 @@ void SocketPool::put(SocketListener::ShibSocket s)
 }
 
 SocketListener::SocketListener(const DOMElement* e)
-    : m_catchAll(false), log(&Category::getInstance(SHIBSP_LOGCAT".Listener")), m_socketpool(NULL),
-        m_shutdown(NULL), m_child_lock(NULL), m_child_wait(NULL), m_socket((ShibSocket)0)
+    : m_catchAll(false), log(&Category::getInstance(SHIBSP_LOGCAT".Listener")), m_socketpool(nullptr),
+        m_shutdown(nullptr), m_child_lock(nullptr), m_child_wait(nullptr), m_stackSize(0), m_socket((ShibSocket)0)
 {
     // Are we a client?
     if (SPConfig::getConfig().isEnabled(SPConfig::InProcess)) {
@@ -170,6 +173,9 @@ SocketListener::SocketListener(const DOMElement* e)
     if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
         m_child_lock = Mutex::create();
         m_child_wait = CondWait::create();
+
+        static const XMLCh stackSize[] = UNICODE_LITERAL_9(s,t,a,c,k,S,i,z,e);
+        m_stackSize = XMLHelper::getAttrInt(e, 0, stackSize) * 1024;
     }
 }
 
@@ -362,7 +368,7 @@ DDF SocketListener::send(const DDF& in)
     if (out.isstring() && out.name() && !strcmp(out.name(),"exception")) {
         // Reconstitute exception object.
         DDFJanitor jout(out);
-        XMLToolingException* except=NULL;
+        XMLToolingException* except=nullptr;
         try {
             except=XMLToolingException::fromString(out.string());
             log->error("remoted message returned an error: %s", except->what());
@@ -414,11 +420,11 @@ void* server_thread_fn(void* arg)
 
     // Now we can clean up and exit the thread.
     delete child;
-    return NULL;
+    return nullptr;
 }
 
 ServerThread::ServerThread(SocketListener::ShibSocket& s, SocketListener* listener, unsigned long id)
-    : m_sock(s), m_child(NULL), m_listener(listener)
+    : m_sock(s), m_child(nullptr), m_listener(listener)
 {
 
     ostringstream buf;
@@ -426,7 +432,7 @@ ServerThread::ServerThread(SocketListener::ShibSocket& s, SocketListener* listen
     m_id = buf.str();
 
     // Create the child thread
-    m_child = Thread::create(server_thread_fn, (void*)this);
+    m_child = Thread::create(server_thread_fn, (void*)this, m_listener->m_stackSize);
     m_child->detach();
 }
 

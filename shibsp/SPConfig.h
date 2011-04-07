@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 /**
  * @file shibsp/SPConfig.h
  *
- * Library configuration
+ * Library configuration.
  */
 
 #ifndef __shibsp_config_h__
@@ -44,6 +44,7 @@ namespace shibsp {
     class SHIBSP_API Handler;
     class SHIBSP_API ListenerService;
     class SHIBSP_API RequestMapper;
+    class SHIBSP_API ProtocolProvider;
     class SHIBSP_API ServiceProvider;
     class SHIBSP_API SessionCache;
     class SHIBSP_API SessionInitiator;
@@ -55,6 +56,7 @@ namespace shibsp {
     class SHIBSP_API AttributeResolver;
     class SHIBSP_API FilterPolicyContext;
     class SHIBSP_API MatchFunctor;
+    class SHIBSP_API SecurityPolicyProvider;
 #endif
 
 #if defined (_MSC_VER)
@@ -106,13 +108,21 @@ namespace shibsp {
          */
         void setFeatures(unsigned long enabled);
 
+
+        /**
+         * Gets the bitmask of subsystems being activated.
+         *
+         * @return bitmask of component constants
+         */
+        unsigned long getFeatures() const;
+
         /**
          * Test whether a subsystem is enabled.
          *
          * @param feature   subsystem/component to test
          * @return true iff feature is enabled
          */
-        bool isEnabled(components_t feature);
+        bool isEnabled(components_t feature) const;
 
         /**
          * Initializes library
@@ -124,7 +134,7 @@ namespace shibsp {
          * @param inst_prefix   installation prefix for software
          * @return true iff initialization was successful
          */
-        virtual bool init(const char* catalog_path=NULL, const char* inst_prefix=NULL);
+        virtual bool init(const char* catalog_path=nullptr, const char* inst_prefix=nullptr);
 
         /**
          * Shuts down library
@@ -146,7 +156,7 @@ namespace shibsp {
         /**
          * Returns the global ServiceProvider instance.
          *
-         * @return  global ServiceProvider or NULL
+         * @return  global ServiceProvider or nullptr
          */
         ServiceProvider* getServiceProvider() const;
 
@@ -158,7 +168,7 @@ namespace shibsp {
          * @param rethrow   true iff caught exceptions should be rethrown instead of just returning the status
          * @return true iff instantiation was successful
          */
-        virtual bool instantiate(const char* config=NULL, bool rethrow=false);
+        virtual bool instantiate(const char* config=nullptr, bool rethrow=false);
 
 #ifndef SHIBSP_LITE
         /**
@@ -174,7 +184,7 @@ namespace shibsp {
         /**
          * Returns the global ArtifactResolver instance.
          *
-         * @return  global ArtifactResolver or NULL
+         * @return  global ArtifactResolver or nullptr
          */
         const opensaml::MessageDecoder::ArtifactResolver* getArtifactResolver() const;
 #endif
@@ -212,6 +222,11 @@ namespace shibsp {
          * Manages factories for MatchFunctor plugins.
          */
         xmltooling::PluginManager< MatchFunctor,xmltooling::QName,std::pair<const FilterPolicyContext*,const xercesc::DOMElement*> > MatchFunctorManager;
+
+        /**
+         * Manages factories for SecurityPolicyProvider plugins.
+         */
+        xmltooling::PluginManager<SecurityPolicyProvider,std::string,const xercesc::DOMElement*> SecurityPolicyProviderManager;
 #endif
 
         /**
@@ -243,6 +258,11 @@ namespace shibsp {
          * Manages factories for Handler plugins that implement ManageNameIDService functionality.
          */
         xmltooling::PluginManager< Handler,std::string,std::pair<const xercesc::DOMElement*,const char*> > ManageNameIDServiceManager;
+
+        /**
+         * Manages factories for ProtocolProvider plugins.
+         */
+        xmltooling::PluginManager<ProtocolProvider,std::string,const xercesc::DOMElement*> ProtocolProviderManager;
 
         /**
          * Manages factories for RequestMapper plugins.

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2007 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
  */
 
 #include "internal.h"
+#include "exceptions.h"
 #include "attribute/filtering/AttributeFilter.h"
 #include "attribute/filtering/FilteringContext.h"
 
@@ -69,22 +70,22 @@ namespace shibsp {
 
 ChainingAttributeFilter::ChainingAttributeFilter(const DOMElement* e)
 {
-    SPConfig& conf = SPConfig::getConfig();
-
     // Load up the chain of handlers.
-    e = e ? XMLHelper::getFirstChildElement(e, _AttributeFilter) : NULL;
-    while (e) {
-        auto_ptr_char type(e->getAttributeNS(NULL,_type));
-        if (type.get() && *(type.get())) {
-            try {
-                m_filters.push_back(conf.AttributeFilterManager.newPlugin(type.get(),e));
+    try {
+        e = XMLHelper::getFirstChildElement(e, _AttributeFilter);
+        while (e) {
+            string t(XMLHelper::getAttrString(e, nullptr, _type));
+            if (!t.empty()) {
+                Category::getInstance(SHIBSP_LOGCAT".AttributeFilter.Chaining").info("building AttributeFilter of type (%s)...", t.c_str());
+                m_filters.push_back(SPConfig::getConfig().AttributeFilterManager.newPlugin(t.c_str(), e));
             }
-            catch (exception& ex) {
-                Category::getInstance(SHIBSP_LOGCAT".AttributeFilter").error(
-                    "caught exception processing embedded AttributeFilter element: %s", ex.what()
-                    );
-            }
+            e = XMLHelper::getNextSiblingElement(e, _AttributeFilter);
         }
-        e = XMLHelper::getNextSiblingElement(e, _AttributeFilter);
     }
+    catch (exception&) {
+        for_each(m_filters.begin(), m_filters.end(), xmltooling::cleanup<AttributeFilter>());
+        throw;
+    }
+    if (m_filters.empty())
+        throw ConfigurationException("Chaining AttributeFilter plugin requires at least one child plugin.");
 }

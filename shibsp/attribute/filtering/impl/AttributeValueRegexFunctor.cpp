@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 /**
  * AttributeValueRegexFunctor.cpp
  * 
- * A match function that evaluates an attribute's value against the provided regular expression.
+ * A match function that evaluates an attribute's value against the provided
+ * regular expression.
  */
 
 #include "internal.h"
@@ -27,10 +28,13 @@
 #include "attribute/filtering/FilterPolicyContext.h"
 #include "attribute/filtering/MatchFunctor.h"
 
+#include <xmltooling/util/XMLHelper.h>
+
 #include <xercesc/util/regx/RegularExpression.hpp>
 
 using namespace shibsp;
 using namespace std;
+using xmltooling::XMLHelper;
 
 namespace shibsp {
 
@@ -43,7 +47,7 @@ namespace shibsp {
      */
     class SHIBSP_DLLLOCAL AttributeValueRegexFunctor : public MatchFunctor
     {
-        xmltooling::auto_ptr_char m_attributeID;
+        string m_attributeID;
         RegularExpression* m_regex;
 
         bool hasValue(const FilteringContext& filterContext) const;
@@ -51,12 +55,12 @@ namespace shibsp {
 
     public:
         AttributeValueRegexFunctor(const DOMElement* e)
-                : m_attributeID(e ? e->getAttributeNS(NULL,attributeID) : NULL) {
-            const XMLCh* r = e ? e->getAttributeNS(NULL,regex) : NULL;
+                : m_attributeID(XMLHelper::getAttrString(e, nullptr, attributeID)), m_regex(nullptr) {
+            const XMLCh* r = e ? e->getAttributeNS(nullptr,regex) : nullptr;
             if (!r || !*r)
                 throw ConfigurationException("AttributeValueRegex MatchFunctor requires non-empty regex attribute.");
             try {
-                m_regex = new RegularExpression(r, e->getAttributeNS(NULL,options));
+                m_regex = new RegularExpression(r, e->getAttributeNS(nullptr,options));
             }
             catch (XMLException& ex) {
                 xmltooling::auto_ptr_char temp(ex.getMessage());
@@ -65,13 +69,13 @@ namespace shibsp {
         }
 
         bool evaluatePolicyRequirement(const FilteringContext& filterContext) const {
-            if (!m_attributeID.get() || !*m_attributeID.get())
+            if (m_attributeID.empty())
                 throw AttributeFilteringException("No attributeID specified.");
             return hasValue(filterContext);
         }
 
         bool evaluatePermitValue(const FilteringContext& filterContext, const Attribute& attribute, size_t index) const {
-            if (!m_attributeID.get() || !*m_attributeID.get() || XMLString::equals(m_attributeID.get(), attribute.getId()))
+            if (m_attributeID.empty() || m_attributeID == attribute.getId())
                 return matches(attribute, index);
             return hasValue(filterContext);
         }
@@ -88,7 +92,7 @@ bool AttributeValueRegexFunctor::hasValue(const FilteringContext& filterContext)
 {
     size_t count;
     pair<multimap<string,Attribute*>::const_iterator,multimap<string,Attribute*>::const_iterator> attrs =
-        filterContext.getAttributes().equal_range(m_attributeID.get());
+        filterContext.getAttributes().equal_range(m_attributeID);
     for (; attrs.first != attrs.second; ++attrs.first) {
         count = attrs.first->second->valueCount();
         for (size_t index = 0; index < count; ++index) {

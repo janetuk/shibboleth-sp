@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,9 @@
 
 #include <xercesc/framework/Wrapper4InputSource.hpp>
 #include <xercesc/util/XMLUniDefs.hpp>
+#include <xercesc/util/regx/RegularExpression.hpp>
 #include <xsec/framework/XSECDefs.hpp>
+
 #include <saml/version.h>
 #include <saml/binding/SAMLArtifact.h>
 #include <saml/saml2/metadata/Metadata.h>
@@ -42,6 +44,7 @@
 #include <xmltooling/soap/HTTPSOAPTransport.h>
 #include <xmltooling/util/NDC.h>
 #include <xmltooling/util/ParserPool.h>
+#include <xmltooling/util/URLEncoder.h>
 #include <xmltooling/util/XMLHelper.h>
 
 using namespace shibsp;
@@ -60,16 +63,16 @@ namespace shibsp {
         Lockable* lock() {return this;}
         void unlock() {}
 
-        const Credential* resolve(const CredentialCriteria* criteria=NULL) const {return NULL;}
+        const Credential* resolve(const CredentialCriteria* criteria=nullptr) const {return nullptr;}
         vector<const Credential*>::size_type resolve(
-            vector<const Credential*>& results, const CredentialCriteria* criteria=NULL
+            vector<const Credential*>& results, const CredentialCriteria* criteria=nullptr
             ) const {return 0;}
     };
 
     class SHIBSP_DLLLOCAL DynamicMetadataProvider : public saml2md::DynamicMetadataProvider
     {
     public:
-        DynamicMetadataProvider(const xercesc::DOMElement* e=NULL);
+        DynamicMetadataProvider(const xercesc::DOMElement* e=nullptr);
 
         virtual ~DynamicMetadataProvider() {
             delete m_trust;
@@ -79,7 +82,8 @@ namespace shibsp {
         saml2md::EntityDescriptor* resolve(const saml2md::MetadataProvider::Criteria& criteria) const;
 
     private:
-        bool m_verifyHost,m_ignoreTransport;
+        bool m_verifyHost,m_ignoreTransport,m_encoded;
+        string m_subst, m_match, m_regex;
         X509TrustEngine* m_trust;
     };
 
@@ -89,36 +93,55 @@ namespace shibsp {
         return new DynamicMetadataProvider(e);
     }
 
+    static const XMLCh encoded[] =          UNICODE_LITERAL_7(e,n,c,o,d,e,d);
     static const XMLCh ignoreTransport[] =  UNICODE_LITERAL_15(i,g,n,o,r,e,T,r,a,n,s,p,o,r,t);
+    static const XMLCh match[] =            UNICODE_LITERAL_5(m,a,t,c,h);
+    static const XMLCh Regex[] =            UNICODE_LITERAL_5(R,e,g,e,x);
+    static const XMLCh Subst[] =            UNICODE_LITERAL_5(S,u,b,s,t);
     static const XMLCh _TrustEngine[] =     UNICODE_LITERAL_11(T,r,u,s,t,E,n,g,i,n,e);
     static const XMLCh type[] =             UNICODE_LITERAL_4(t,y,p,e);
     static const XMLCh verifyHost[] =       UNICODE_LITERAL_10(v,e,r,i,f,y,H,o,s,t);
 };
 
 DynamicMetadataProvider::DynamicMetadataProvider(const DOMElement* e)
-    : saml2md::DynamicMetadataProvider(e), m_verifyHost(true), m_ignoreTransport(false), m_trust(NULL)
+    : saml2md::DynamicMetadataProvider(e),
+        m_verifyHost(XMLHelper::getAttrBool(e, true, verifyHost)),
+        m_ignoreTransport(XMLHelper::getAttrBool(e, false, ignoreTransport)),
+        m_encoded(true), m_trust(nullptr)
 {
-    const XMLCh* flag = e ? e->getAttributeNS(NULL, verifyHost) : NULL;
-    if (flag && (*flag == chLatin_f || *flag == chDigit_0))
-        m_verifyHost = false;
-    flag = e ? e->getAttributeNS(NULL, ignoreTransport) : NULL;
-    if (flag && (*flag == chLatin_t || *flag == chDigit_1)) {
-        m_ignoreTransport = true;
-        return;
-    }
-
-    e = e ? XMLHelper::getFirstChildElement(e, _TrustEngine) : NULL;
-    auto_ptr_char t2(e ? e->getAttributeNS(NULL,type) : NULL);
-    if (t2.get()) {
-        TrustEngine* trust = XMLToolingConfig::getConfig().TrustEngineManager.newPlugin(t2.get(),e);
-        if (!(m_trust = dynamic_cast<X509TrustEngine*>(trust))) {
-            delete trust;
-            throw ConfigurationException("DynamicMetadataProvider requires an X509TrustEngine plugin.");
+    const DOMElement* child = XMLHelper::getFirstChildElement(e, Subst);
+    if (child && child->hasChildNodes()) {
+        auto_ptr_char s(child->getFirstChild()->getNodeValue());
+        if (s.get() && *s.get()) {
+            m_subst = s.get();
+            m_encoded = XMLHelper::getAttrBool(child, true, encoded);
         }
-        return;
     }
 
-    throw ConfigurationException("DynamicMetadataProvider requires an X509TrustEngine plugin unless ignoreTransport is true.");
+    if (m_subst.empty()) {
+        child = XMLHelper::getFirstChildElement(e, Regex);
+        if (child && child->hasChildNodes() && child->hasAttributeNS(nullptr, match)) {
+            m_match = XMLHelper::getAttrString(child, nullptr, match);
+            auto_ptr_char repl(child->getFirstChild()->getNodeValue());
+            if (repl.get() && *repl.get())
+                m_regex = repl.get();
+        }
+    }
+
+    if (!m_ignoreTransport) {
+        child = XMLHelper::getFirstChildElement(e, _TrustEngine);
+        string t = XMLHelper::getAttrString(child, nullptr, type);
+        if (!t.empty()) {
+            TrustEngine* trust = XMLToolingConfig::getConfig().TrustEngineManager.newPlugin(t.c_str(), child);
+            if (!(m_trust = dynamic_cast<X509TrustEngine*>(trust))) {
+                delete trust;
+                throw ConfigurationException("DynamicMetadataProvider requires an X509TrustEngine plugin.");
+            }
+        }
+
+        if (!m_trust)
+            throw ConfigurationException("DynamicMetadataProvider requires an X509TrustEngine plugin unless ignoreTransport is true.");
+    }
 }
 
 saml2md::EntityDescriptor* DynamicMetadataProvider::resolve(const saml2md::MetadataProvider::Criteria& criteria) const
@@ -137,7 +160,40 @@ saml2md::EntityDescriptor* DynamicMetadataProvider::resolve(const saml2md::Metad
         name = temp.get();
     }
     else if (criteria.artifact) {
-        throw saml2md::MetadataException("Unable to resolve metadata dynamically from an artifact.");
+        if (m_subst.empty() && (m_regex.empty() || m_match.empty()))
+            throw saml2md::MetadataException("Unable to resolve metadata dynamically from an artifact.");
+        name = "{sha1}" + criteria.artifact->getSource();
+    }
+
+    // Possibly transform the input into a different URL to use.
+    if (!m_subst.empty()) {
+        string::size_type pos = m_subst.find("$entityID");
+        if (pos != string::npos) {
+            string name2 = m_subst;
+            name2.replace(pos, 9, m_encoded ? XMLToolingConfig::getConfig().getURLEncoder()->encode(name.c_str()) : name);
+            log.info("transformed location from (%s) to (%s)", name.c_str(), name2.c_str());
+            name = name2;
+        }
+    }
+    else if (!m_match.empty() && !m_regex.empty()) {
+        try {
+            RegularExpression exp(m_match.c_str());
+            XMLCh* temp = exp.replace(name.c_str(), m_regex.c_str());
+            if (temp) {
+                auto_ptr_char narrow(temp);
+                XMLString::release(&temp);
+
+                // For some reason it returns the match string if it doesn't match the expression.
+                if (name != narrow.get()) {
+                    log.info("transformed location from (%s) to (%s)", name.c_str(), narrow.get());
+                    name = narrow.get();
+                }
+            }
+        }
+        catch (XMLException& ex) {
+            auto_ptr_char msg(ex.getMessage());
+            log.error("caught error applying regular expression: %s", msg.get());
+        }
     }
 
     // Establish networking properties based on calling application.
@@ -145,7 +201,9 @@ saml2md::EntityDescriptor* DynamicMetadataProvider::resolve(const saml2md::Metad
     if (!mpc)
         throw saml2md::MetadataException("Dynamic MetadataProvider requires Shibboleth-aware lookup criteria, check calling code.");
     const PropertySet* relyingParty;
-    if (criteria.entityID_unicode)
+    if (criteria.artifact)
+        relyingParty = mpc->application.getRelyingParty((XMLCh*)nullptr);
+    else if (criteria.entityID_unicode)
         relyingParty = mpc->application.getRelyingParty(criteria.entityID_unicode);
     else {
         auto_ptr_XMLCh temp2(name.c_str());
@@ -156,9 +214,9 @@ saml2md::EntityDescriptor* DynamicMetadataProvider::resolve(const saml2md::Metad
     SOAPTransport::Address addr(relyingParty->getString("entityID").second, name.c_str(), name.c_str());
     const char* pch = strchr(addr.m_endpoint,':');
     if (!pch)
-        throw IOException("entityID was not a URL.");
+        throw IOException("location was not a URL.");
     string scheme(addr.m_endpoint, pch-addr.m_endpoint);
-    SOAPTransport* transport=NULL;
+    SOAPTransport* transport=nullptr;
     try {
         transport = XMLToolingConfig::getConfig().SOAPTransportManager.newPlugin(scheme.c_str(), addr);
     }
@@ -174,8 +232,8 @@ saml2md::EntityDescriptor* DynamicMetadataProvider::resolve(const saml2md::Metad
     if (m_trust && !transport->setTrustEngine(m_trust, &dcr))
         throw IOException("Unable to install X509TrustEngine into metadata resolver.");
 
-    Locker credlocker(NULL, false);
-    CredentialResolver* credResolver = NULL;
+    Locker credlocker(nullptr, false);
+    CredentialResolver* credResolver = nullptr;
     pair<bool,const char*> authType=relyingParty->getString("authType");
     if (!authType.first || !strcmp(authType.second,"TLS")) {
         credResolver = mpc->application.getCredentialResolver();
@@ -243,11 +301,11 @@ saml2md::EntityDescriptor* DynamicMetadataProvider::resolve(const saml2md::Metad
     }
 
     try {
-        // Use a NULL stream to trigger a body-less "GET" operation.
+        // Use a nullptr stream to trigger a body-less "GET" operation.
         transport->send();
         istream& msg = transport->receive();
 
-        DOMDocument* doc=NULL;
+        DOMDocument* doc=nullptr;
         StreamInputSource src(msg, "DynamicMetadataProvider");
         Wrapper4InputSource dsrc(&src,false);
         if (m_validate)
@@ -274,7 +332,7 @@ saml2md::EntityDescriptor* DynamicMetadataProvider::resolve(const saml2md::Metad
     }
     catch (XMLException& e) {
         auto_ptr_char msg(e.getMessage());
-        log.error("Xerces error while resolving entityID (%s): %s", name.c_str(), msg.get());
+        log.error("Xerces error while resolving location (%s): %s", name.c_str(), msg.get());
         throw saml2md::MetadataException(msg.get());
     }
 }

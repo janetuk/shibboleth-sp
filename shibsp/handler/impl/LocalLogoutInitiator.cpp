@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2011 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@
 #include "SessionCache.h"
 #include "SPRequest.h"
 #include "handler/AbstractHandler.h"
-#include "handler/LogoutHandler.h"
+#include "handler/LogoutInitiator.h"
 
 using namespace shibsp;
 using namespace xmltooling;
@@ -39,7 +39,7 @@ namespace shibsp {
     #pragma warning( disable : 4250 )
 #endif
 
-    class SHIBSP_DLLLOCAL LocalLogoutInitiator : public AbstractHandler, public LogoutHandler
+    class SHIBSP_DLLLOCAL LocalLogoutInitiator : public AbstractHandler, public LogoutInitiator
     {
     public:
         LocalLogoutInitiator(const DOMElement* e, const char* appId);
@@ -47,12 +47,6 @@ namespace shibsp {
         
         void setParent(const PropertySet* parent);
         pair<bool,long> run(SPRequest& request, bool isHandler=true) const;
-
-#ifndef SHIBSP_LITE
-        const char* getType() const {
-            return "LogoutInitiator";
-        }
-#endif
 
     private:
         string m_appId;
@@ -111,7 +105,9 @@ pair<bool,long> LocalLogoutInitiator::run(SPRequest& request, bool isHandler) co
 
     // Route back to return location specified, or use the local template.
     const char* dest = request.getParameter("return");
-    if (dest)
+    if (dest) {
+        limitRelayState(m_log, app, request, dest);
         return make_pair(true, request.sendRedirect(dest));
+    }
     return sendLogoutPage(app, request, request, "local");
 }

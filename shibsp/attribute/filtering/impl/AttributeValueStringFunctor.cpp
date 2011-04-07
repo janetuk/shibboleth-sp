@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 /**
  * AttributeValueStringFunctor.cpp
  * 
- * A match function that matches the value of an attribute against the specified value.
+ * A match function that matches the value of an attribute against the
+ * specified value.
  */
 
 #include "internal.h"
@@ -27,8 +28,11 @@
 #include "attribute/filtering/FilterPolicyContext.h"
 #include "attribute/filtering/MatchFunctor.h"
 
+#include <xmltooling/util/XMLHelper.h>
+
 using namespace shibsp;
 using namespace std;
+using xmltooling::XMLHelper;
 
 namespace shibsp {
 
@@ -41,7 +45,7 @@ namespace shibsp {
      */
     class SHIBSP_DLLLOCAL AttributeValueStringFunctor : public MatchFunctor
     {
-        xmltooling::auto_ptr_char m_attributeID;
+        string m_attributeID;
         char* m_value;
 
         bool hasValue(const FilteringContext& filterContext) const;
@@ -49,12 +53,13 @@ namespace shibsp {
 
     public:
         AttributeValueStringFunctor(const DOMElement* e)
-            : m_value(e ? xmltooling::toUTF8(e->getAttributeNS(NULL,value)) : NULL), m_attributeID(e ? e->getAttributeNS(NULL,attributeID) : NULL) {
+            : m_value(e ? xmltooling::toUTF8(e->getAttributeNS(nullptr,value)) : nullptr),
+                m_attributeID(XMLHelper::getAttrString(e, nullptr, attributeID)) {
             if (!m_value || !*m_value) {
                 delete[] m_value;
                 throw ConfigurationException("AttributeValueString MatchFunctor requires non-empty value attribute.");
             }
-            if (e && e->hasAttributeNS(NULL,ignoreCase)) {
+            if (e && e->hasAttributeNS(nullptr,ignoreCase)) {
                 xmltooling::logging::Category::getInstance(SHIBSP_LOGCAT".AttributeFilter").warn(
                     "ignoreCase property ignored by AttributeValueString MatchFunctor in favor of attribute's caseSensitive property"
                     );
@@ -66,13 +71,13 @@ namespace shibsp {
         }
 
         bool evaluatePolicyRequirement(const FilteringContext& filterContext) const {
-            if (!m_attributeID.get() || !*m_attributeID.get())
+            if (m_attributeID.empty())
                 throw AttributeFilteringException("No attributeID specified.");
             return hasValue(filterContext);
         }
 
         bool evaluatePermitValue(const FilteringContext& filterContext, const Attribute& attribute, size_t index) const {
-            if (!m_attributeID.get() || !*m_attributeID.get() || XMLString::equals(m_attributeID.get(), attribute.getId()))
+            if (m_attributeID.empty() || m_attributeID == attribute.getId())
                 return matches(attribute, index);
             return hasValue(filterContext);
         }
@@ -89,7 +94,7 @@ bool AttributeValueStringFunctor::hasValue(const FilteringContext& filterContext
 {
     size_t count;
     pair<multimap<string,Attribute*>::const_iterator,multimap<string,Attribute*>::const_iterator> attrs =
-        filterContext.getAttributes().equal_range(m_attributeID.get());
+        filterContext.getAttributes().equal_range(m_attributeID);
     for (; attrs.first != attrs.second; ++attrs.first) {
         count = attrs.first->second->valueCount();
         for (size_t index = 0; index < count; ++index) {

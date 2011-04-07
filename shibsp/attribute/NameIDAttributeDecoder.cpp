@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 /**
  * NameIDAttributeDecoder.cpp
  *
- * Decodes SAML into NameIDAttributes
+ * Decodes SAML into NameIDAttributes.
  */
 
 #include "internal.h"
@@ -41,15 +41,14 @@ namespace shibsp {
     {
     public:
         NameIDAttributeDecoder(const DOMElement* e)
-                : AttributeDecoder(e), m_formatter(e ? e->getAttributeNS(NULL, formatter) : NULL), m_defaultQualifiers(false) {
-            const XMLCh* flag = e ? e->getAttributeNS(NULL, defaultQualifiers) : NULL;
-            if (flag && (*flag == chLatin_t || *flag == chDigit_1))
-                m_defaultQualifiers = true;
+            : AttributeDecoder(e),
+                m_formatter(XMLHelper::getAttrString(e, nullptr, formatter)),
+                m_defaultQualifiers(XMLHelper::getAttrBool(e, false, defaultQualifiers)) {
         }
         ~NameIDAttributeDecoder() {}
 
         shibsp::Attribute* decode(
-            const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=NULL, const char* relyingParty=NULL
+            const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=nullptr, const char* relyingParty=nullptr
             ) const;
 
     private:
@@ -59,7 +58,7 @@ namespace shibsp {
         void extract(
             const NameIdentifier* n, vector<NameIDAttribute::Value>& dest, const char* assertingParty, const char* relyingParty
             ) const;
-        auto_ptr_char m_formatter;
+        string m_formatter;
         bool m_defaultQualifiers;
     };
 
@@ -74,7 +73,7 @@ shibsp::Attribute* NameIDAttributeDecoder::decode(
     ) const
 {
     auto_ptr<NameIDAttribute> nameid(
-        new NameIDAttribute(ids, (m_formatter.get() && *m_formatter.get()) ? m_formatter.get() : DEFAULT_NAMEID_FORMATTER)
+        new NameIDAttribute(ids, (!m_formatter.empty()) ? m_formatter.c_str() : DEFAULT_NAMEID_FORMATTER)
         );
     vector<NameIDAttribute::Value>& dest = nameid->getValues();
     vector<XMLObject*>::const_iterator v,stop;
@@ -111,33 +110,45 @@ shibsp::Attribute* NameIDAttributeDecoder::decode(
             }
             else {
                 log.warn("XMLObject type not recognized by NameIDAttributeDecoder, no values returned");
-                return NULL;
+                return nullptr;
             }
         }
 
         for (; v!=stop; ++v) {
             const NameIDType* n2 = dynamic_cast<const NameIDType*>(*v);
-            if (n2)
+            if (n2) {
+                log.debug("decoding AttributeValue element of saml2:NameIDType type");
                 extract(n2, dest, assertingParty, relyingParty);
+            }
             else {
                 const NameIdentifier* n1=dynamic_cast<const NameIdentifier*>(*v);
-                if (n1)
+                if (n1) {
+                    log.debug("decoding AttributeValue element of saml1:NameIdentifier type");
                     extract(n1, dest, assertingParty, relyingParty);
+                }
                 else if ((*v)->hasChildren()) {
                     const list<XMLObject*>& values = (*v)->getOrderedChildren();
                     for (list<XMLObject*>::const_iterator vv = values.begin(); vv!=values.end(); ++vv) {
-                        if (n2=dynamic_cast<const NameIDType*>(*vv))
+                        if (n2=dynamic_cast<const NameIDType*>(*vv)) {
+                            log.debug("decoding saml2:NameID child element of AttributeValue");
                             extract(n2, dest, assertingParty, relyingParty);
-                        else if (n1=dynamic_cast<const NameIdentifier*>(*vv))
+                        }
+                        else if (n1=dynamic_cast<const NameIdentifier*>(*vv)) {
+                            log.debug("decoding saml1:NameIdentifier child element of AttributeValue");
                             extract(n1, dest, assertingParty, relyingParty);
-                        else
-                            log.warn("skipping AttributeValue without a recognizable NameID/NameIdentifier");
+                        }
+                        else {
+                            log.warn("skipping AttributeValue child element not recognizable as NameID/NameIdentifier");
+                        }
                     }
+                }
+                else {
+                    log.warn("AttributeValue was not of a supported type and contains no child elements");
                 }
             }
         }
 
-        return dest.empty() ? NULL : _decode(nameid.release());
+        return dest.empty() ? nullptr : _decode(nameid.release());
     }
 
     const NameIDType* saml2name = dynamic_cast<const NameIDType*>(xmlObject);
@@ -162,11 +173,11 @@ shibsp::Attribute* NameIDAttributeDecoder::decode(
         }
         else {
             log.warn("XMLObject type not recognized by NameIDAttributeDecoder, no values returned");
-            return NULL;
+            return nullptr;
         }
     }
 
-    return dest.empty() ? NULL : _decode(nameid.release());
+    return dest.empty() ? nullptr : _decode(nameid.release());
 }
 
 void NameIDAttributeDecoder::extract(

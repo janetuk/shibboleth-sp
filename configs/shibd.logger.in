@@ -1,5 +1,5 @@
 # set overall behavior
-log4j.rootCategory=INFO, shibd_log
+log4j.rootCategory=INFO, shibd_log, warn_log
 
 # fairly verbose for DEBUG, so generally leave at INFO
 log4j.category.XMLTooling.XMLObject=INFO
@@ -24,6 +24,10 @@ log4j.category.XMLTooling.libcurl=INFO
 # persistent storage and caching
 #log4j.category.XMLTooling.StorageService=DEBUG
 
+# logs XML being signed or verified if set to DEBUG
+log4j.category.XMLTooling.Signature.Debugger=INFO, sig_log
+log4j.additivity.XMLTooling.Signature.Debugger=false
+
 # the tran log blocks the "default" appender(s) at runtime
 # Level should be left at INFO for this category
 log4j.category.Shibboleth-TRANSACTION=INFO, tran_log
@@ -35,9 +39,16 @@ log4j.appender.shibd_log=org.apache.log4j.RollingFileAppender
 log4j.appender.shibd_log.fileName=@-PKGLOGDIR-@/shibd.log
 log4j.appender.shibd_log.maxFileSize=1000000
 log4j.appender.shibd_log.maxBackupIndex=10
-#log4j.appender.shibd_log.layout=org.apache.log4j.BasicLayout
 log4j.appender.shibd_log.layout=org.apache.log4j.PatternLayout
 log4j.appender.shibd_log.layout.ConversionPattern=%d{%Y-%m-%d %H:%M:%S} %p %c %x: %m%n
+
+log4j.appender.warn_log=org.apache.log4j.RollingFileAppender
+log4j.appender.warn_log.fileName=@-PKGLOGDIR-@/shibd_warn.log
+log4j.appender.warn_log.maxFileSize=1000000
+log4j.appender.warn_log.maxBackupIndex=10
+log4j.appender.warn_log.layout=org.apache.log4j.PatternLayout
+log4j.appender.warn_log.layout.ConversionPattern=%d{%Y-%m-%d %H:%M:%S} %p %c %x: %m%n
+log4j.appender.warn_log.threshold=WARN
 
 log4j.appender.tran_log=org.apache.log4j.RollingFileAppender
 log4j.appender.tran_log.fileName=@-PKGLOGDIR-@/transaction.log
@@ -45,3 +56,8 @@ log4j.appender.tran_log.maxFileSize=1000000
 log4j.appender.tran_log.maxBackupIndex=20
 log4j.appender.tran_log.layout=org.apache.log4j.PatternLayout
 log4j.appender.tran_log.layout.ConversionPattern=%d{%Y-%m-%d %H:%M:%S} %p %c %x: %m%n
+
+log4j.appender.sig_log=org.apache.log4j.FileAppender
+log4j.appender.sig_log.fileName=@-PKGLOGDIR-@/signature.log
+log4j.appender.sig_log.layout=org.apache.log4j.PatternLayout
+log4j.appender.sig_log.layout.ConversionPattern=%m

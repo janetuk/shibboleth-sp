@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,15 +44,12 @@ namespace opensaml {
 #endif
 
 namespace xmltooling {
-    class XMLTOOL_API HTTPRequest;
-    class XMLTOOL_API HTTPResponse;
     class XMLTOOL_API XMLObject;
 };
 
 namespace shibsp {
 
     class SHIBSP_API Application;
-    class SHIBSP_API SPRequest;
 
 #if defined (_MSC_VER)
     #pragma warning( push )
@@ -76,9 +73,11 @@ namespace shibsp {
         AbstractHandler(
             const xercesc::DOMElement* e,
             xmltooling::logging::Category& log,
-            xercesc::DOMNodeFilter* filter=NULL,
-            const std::map<std::string,std::string>* remapper=NULL
+            xercesc::DOMNodeFilter* filter=nullptr,
+            const std::map<std::string,std::string>* remapper=nullptr
             );
+
+        void log(SPRequest::SPLogLevel level, const std::string& msg) const;
 
 #ifndef SHIBSP_LITE
         /**
@@ -92,7 +91,7 @@ namespace shibsp {
          */
         virtual void checkError(
             const xmltooling::XMLObject* response,
-            const opensaml::saml2md::RoleDescriptor* role=NULL
+            const opensaml::saml2md::RoleDescriptor* role=nullptr
             ) const;
 
         /**
@@ -104,7 +103,7 @@ namespace shibsp {
          * @param msg       optional message to pass back
          */
         void fillStatus(
-            opensaml::saml2p::StatusResponseType& response, const XMLCh* code, const XMLCh* subcode=NULL, const char* msg=NULL
+            opensaml::saml2p::StatusResponseType& response, const XMLCh* code, const XMLCh* subcode=nullptr, const char* msg=nullptr
             ) const;
 
         /**
@@ -133,42 +132,6 @@ namespace shibsp {
             ) const;
 #endif
 
-        /**
-         * Implements various mechanisms to preserve RelayState,
-         * such as cookies or StorageService-backed keys.
-         * 
-         * <p>If a supported mechanism can be identified, the input parameter will be
-         * replaced with a suitable state key.
-         * 
-         * @param application   the associated Application
-         * @param response      outgoing HTTP response
-         * @param relayState    RelayState token to supply with message
-         */
-        virtual void preserveRelayState(
-            const Application& application, xmltooling::HTTPResponse& response, std::string& relayState
-            ) const;
-
-        /**
-         * Implements various mechanisms to recover RelayState,
-         * such as cookies or StorageService-backed keys.
-         * 
-         * <p>If a supported mechanism can be identified, the input parameter will be
-         * replaced with the recovered state information.
-         * 
-         * @param application   the associated Application
-         * @param request       incoming HTTP request
-         * @param response      outgoing HTTP response
-         * @param relayState    RelayState token supplied with message
-         * @param clear         true iff the token state should be cleared
-         */
-        virtual void recoverRelayState(
-            const Application& application,
-            const xmltooling::HTTPRequest& request,
-            xmltooling::HTTPResponse& response,
-            std::string& relayState,
-            bool clear=true
-            ) const;
-        
         /**
          * Implements a mechanism to preserve form post data.
          *
@@ -205,19 +168,74 @@ namespace shibsp {
 
         /**
          * Post a redirect response with post data.
-         * 
+         *
          * @param application   the associated Application
          * @param response      outgoing HTTP response
-         * @param request       incoming HTTP request
          * @param url           action url for the form
          * @param postData      list of parameters to load into the form, as DDF string members
          */
         virtual long sendPostResponse(
             const Application& application,
-            xmltooling::HTTPResponse& httpResponse,
+            xmltooling::HTTPResponse& response,
             const char* url,
             DDF& postData
             ) const;
+
+        /**
+         * Bitmask of property sources to read from
+         * (request query parameter, request mapper, fixed handler property).
+         */
+        enum PropertySourceTypes {
+            HANDLER_PROPERTY_REQUEST = 1,
+            HANDLER_PROPERTY_MAP = 2,
+            HANDLER_PROPERTY_FIXED = 4,
+            HANDLER_PROPERTY_ALL = 255
+        };
+
+        using DOMPropertySet::getBool;
+        using DOMPropertySet::getString;
+        using DOMPropertySet::getUnsignedInt;
+        using DOMPropertySet::getInt;
+
+        /**
+         * Returns a boolean-valued property.
+         * 
+         * @param name      property name
+         * @param request   reference to incoming request
+         * @param type      bitmask of property sources to use
+         * @return a pair consisting of a nullptr indicator and the property value iff the indicator is true
+         */
+        std::pair<bool,bool> getBool(const char* name, const SPRequest& request, unsigned int type=HANDLER_PROPERTY_ALL) const;
+
+        /**
+         * Returns a string-valued property.
+         * 
+         * @param name      property name
+         * @param request   reference to incoming request
+         * @param type      bitmask of property sources to use
+         * @return a pair consisting of a nullptr indicator and the property value iff the indicator is true
+         */
+        std::pair<bool,const char*> getString(const char* name, const SPRequest& request, unsigned int type=HANDLER_PROPERTY_ALL) const;
+
+        /**
+         * Returns an unsigned integer-valued property.
+         * 
+         * @param name      property name
+         * @param request   reference to incoming request
+         * @param type      bitmask of property sources to use
+         * @return a pair consisting of a nullptr indicator and the property value iff the indicator is true
+         */
+        std::pair<bool,unsigned int> getUnsignedInt(const char* name, const SPRequest& request, unsigned int type=HANDLER_PROPERTY_ALL) const;
+
+        /**
+         * Returns an integer-valued property.
+         * 
+         * @param name      property name
+         * @param request   reference to incoming request
+         * @param type      bitmask of property sources to use
+         * @return a pair consisting of a nullptr indicator and the property value iff the indicator is true
+         */
+        std::pair<bool,int> getInt(const char* name, const SPRequest& request, unsigned int type=HANDLER_PROPERTY_ALL) const;
 
         /** Logging object. */
         xmltooling::logging::Category& m_log;

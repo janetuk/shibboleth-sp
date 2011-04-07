@@ -1,5 +1,5 @@
 /*
- *  Copyright 2009 Internet2
+ *  Copyright 2009-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ AccessControl::~AccessControl()
 
 ChainingAccessControl::ChainingAccessControl(const DOMElement* e)
 {
-    const XMLCh* op = e ? e->getAttributeNS(NULL, _operator) : NULL;
+    const XMLCh* op = e ? e->getAttributeNS(nullptr, _operator) : nullptr;
     if (XMLString::equals(op, AND))
         m_op=OP_AND;
     else if (XMLString::equals(op, OR))
@@ -102,12 +102,12 @@ ChainingAccessControl::ChainingAccessControl(const DOMElement* e)
         throw ConfigurationException("Missing or unrecognized operator in Chaining AccessControl configuration.");
 
     try {
-        e = e ? XMLHelper::getFirstChildElement(e, _AccessControl) : NULL;
+        e = XMLHelper::getFirstChildElement(e, _AccessControl);
         while (e) {
-            auto_ptr_char type(e->getAttributeNS(NULL, _type));
-            if (type.get() && *type.get()) {
-                Category::getInstance(SHIBSP_LOGCAT".AccessControl.Chaining").info("building AccessControl provider of type (%s)...", type.get());
-                m_ac.push_back(SPConfig::getConfig().AccessControlManager.newPlugin(type.get(), e));
+            string t(XMLHelper::getAttrString(e, nullptr, _type));
+            if (!t.empty()) {
+                Category::getInstance(SHIBSP_LOGCAT".AccessControl.Chaining").info("building AccessControl provider of type (%s)...", t.c_str());
+                m_ac.push_back(SPConfig::getConfig().AccessControlManager.newPlugin(t.c_str(), e));
             }
             e = XMLHelper::getNextSiblingElement(e, _AccessControl);
         }
@@ -126,8 +126,10 @@ AccessControl::aclresult_t ChainingAccessControl::authorized(const SPRequest& re
         case OP_AND:
         {
             for (vector<AccessControl*>::const_iterator i=m_ac.begin(); i!=m_ac.end(); ++i) {
-                if ((*i)->authorized(request, session) != shib_acl_true)
+                if ((*i)->authorized(request, session) != shib_acl_true) {
+                    request.log(SPRequest::SPDebug, "embedded AccessControl plugin unsuccessful, denying access");
                     return shib_acl_false;
+                }
             }
             return shib_acl_true;
         }
@@ -138,6 +140,7 @@ AccessControl::aclresult_t ChainingAccessControl::authorized(const SPRequest& re
                 if ((*i)->authorized(request,session) == shib_acl_true)
                     return shib_acl_true;
             }
+            request.log(SPRequest::SPDebug, "all embedded AccessControl plugins unsuccessful, denying access");
             return shib_acl_false;
         }
     }

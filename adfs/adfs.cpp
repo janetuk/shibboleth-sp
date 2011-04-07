@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 /**
  * adfs.cpp
  *
- * ADFSv1 extension library
+ * ADFSv1 extension library.
  */
 
 #if defined (_MSC_VER) || defined(__BORLANDC__)
@@ -42,7 +42,7 @@
 #include <shibsp/SPConfig.h>
 #include <shibsp/SPRequest.h>
 #include <shibsp/handler/AssertionConsumerService.h>
-#include <shibsp/handler/LogoutHandler.h>
+#include <shibsp/handler/LogoutInitiator.h>
 #include <shibsp/handler/SessionInitiator.h>
 #include <xmltooling/logging.h>
 #include <xmltooling/util/DateTime.h>
@@ -90,6 +90,10 @@ namespace {
         ADFSDecoder() : m_ns(WSTRUST_NS) {}
         virtual ~ADFSDecoder() {}
 
+        const XMLCh* getProtocolFamily() const {
+            return m_ns.get();
+        }
+
         XMLObject* decode(string& relayState, const GenericRequest& genericRequest, SecurityPolicy& policy) const;
 
     protected:
@@ -114,7 +118,7 @@ namespace {
     {
     public:
         ADFSSessionInitiator(const DOMElement* e, const char* appId)
-                : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionInitiator.ADFS"), NULL, &m_remapper), m_appId(appId), m_binding(WSFED_NS) {
+            : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionInitiator.ADFS"), nullptr, &m_remapper), m_appId(appId), m_binding(WSFED_NS) {
             // If Location isn't set, defer address registration until the setParent call.
             pair<bool,const char*> loc = getString("Location");
             if (loc.first) {
@@ -140,6 +144,10 @@ namespace {
         pair<bool,long> unwrap(SPRequest& request, DDF& out) const;
         pair<bool,long> run(SPRequest& request, string& entityID, bool isHandler=true) const;
 
+        const XMLCh* getProtocolFamily() const {
+            return m_binding.get();
+        }
+
     private:
         pair<bool,long> doRequest(
             const Application& application,
@@ -156,13 +164,10 @@ namespace {
 
     class SHIBSP_DLLLOCAL ADFSConsumer : public shibsp::AssertionConsumerService
     {
+        auto_ptr_XMLCh m_protocol;
     public:
         ADFSConsumer(const DOMElement* e, const char* appId)
-            : shibsp::AssertionConsumerService(e, appId, Category::getInstance(SHIBSP_LOGCAT".SSO.ADFS"))
-#ifndef SHIBSP_LITE
-                ,m_protocol(WSFED_NS)
-#endif
-            {}
+            : shibsp::AssertionConsumerService(e, appId, Category::getInstance(SHIBSP_LOGCAT".SSO.ADFS")), m_protocol(WSFED_NS) {}
         virtual ~ADFSConsumer() {}
 
 #ifndef SHIBSP_LITE
@@ -171,21 +176,23 @@ namespace {
             role.addSupport(m_protocol.get());
         }
 
-        auto_ptr_XMLCh m_protocol;
-
     private:
         void implementProtocol(
             const Application& application,
             const HTTPRequest& httpRequest,
             HTTPResponse& httpResponse,
             SecurityPolicy& policy,
-            const PropertySet* settings,
+            const PropertySet*,
             const XMLObject& xmlObject
             ) const;
+#else
+        const XMLCh* getProtocolFamily() const {
+            return m_protocol.get();
+        }
 #endif
     };
 
-    class SHIBSP_DLLLOCAL ADFSLogoutInitiator : public AbstractHandler, public LogoutHandler
+    class SHIBSP_DLLLOCAL ADFSLogoutInitiator : public AbstractHandler, public LogoutInitiator
     {
     public:
         ADFSLogoutInitiator(const DOMElement* e, const char* appId)
@@ -214,11 +221,9 @@ namespace {
         void receive(DDF& in, ostream& out);
         pair<bool,long> run(SPRequest& request, bool isHandler=true) const;
 
-#ifndef SHIBSP_LITE
-        const char* getType() const {
-            return "LogoutInitiator";
+        const XMLCh* getProtocolFamily() const {
+            return m_binding.get();
         }
-#endif
 
     private:
         pair<bool,long> doRequest(const Application& application, const HTTPRequest& httpRequest, HTTPResponse& httpResponse, Session* session) const;
@@ -254,7 +259,7 @@ namespace {
             auto_ptr_XMLCh widen(hurl.c_str());
             SingleLogoutService* ep = SingleLogoutServiceBuilder::buildSingleLogoutService();
             ep->setLocation(widen.get());
-            ep->setBinding(m_login.m_protocol.get());
+            ep->setBinding(m_login.getProtocolFamily());
             role.getSingleLogoutServices().push_back(ep);
         }
 
@@ -262,6 +267,9 @@ namespace {
             return m_login.getType();
         }
 #endif
+        const XMLCh* getProtocolFamily() const {
+            return m_login.getProtocolFamily();
+        }
 
     private:
         ADFSConsumer m_login;
@@ -322,86 +330,73 @@ extern "C" void ADFS_EXPORTS xmltooling_extension_term()
 pair<bool,long> ADFSSessionInitiator::run(SPRequest& request, string& entityID, bool isHandler) const
 {
     // We have to know the IdP to function.
-    if (entityID.empty())
+    if (entityID.empty() || !checkCompatibility(request, isHandler))
         return make_pair(false,0L);
 
     string target;
-    const Handler* ACS=NULL;
-    const char* option;
+    pair<bool,const char*> prop;
     pair<bool,const char*> acClass;
+    const Handler* ACS=nullptr;
     const Application& app=request.getApplication();
 
     if (isHandler) {
-        option=request.getParameter("acsIndex");
-        if (option) {
-            ACS = app.getAssertionConsumerServiceByIndex(atoi(option));
+        prop.second = request.getParameter("acsIndex");
+        if (prop.second && *prop.second) {
+            ACS = app.getAssertionConsumerServiceByIndex(atoi(prop.second));
             if (!ACS)
                 request.log(SPRequest::SPWarn, "invalid acsIndex specified in request, using acsIndex property");
         }
 
-        option = request.getParameter("target");
-        if (option)
-            target = option;
+        prop = getString("target", request);
+        if (prop.first)
+            target = prop.second;
 
         // Since we're passing the ACS by value, we need to compute the return URL,
         // so we'll need the target resource for real.
-        recoverRelayState(request.getApplication(), request, request, target, false);
+        recoverRelayState(app, request, request, target, false);
 
-        if (acClass.second = request.getParameter("authnContextClassRef"))
-            acClass.first = true;
-        else
-            acClass = getString("authnContextClassRef");
+        acClass = getString("authnContextClassRef", request);
     }
     else {
-        // We're running as a "virtual handler" from within the filter.
-        // The target resource is the current one and everything else is defaulted.
-        target=request.getRequestURL();
+        // Check for a hardwired target value in the map or handler.
+        prop = getString("target", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
+        if (prop.first)
+            target = prop.second;
+        else
+            target = request.getRequestURL();
 
-        const PropertySet* settings = request.getRequestSettings().first;
-        acClass = settings->getString("authnContextClassRef");
-        if (!acClass.first)
-            acClass = getString("authnContextClassRef");
+        acClass = getString("authnContextClassRef", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
     }
 
     if (!ACS) {
-        pair<bool,unsigned int> index = getUnsignedInt("acsIndex");
-        if (index.first) {
+        pair<bool,unsigned int> index = getUnsignedInt("acsIndex", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
+        if (index.first)
             ACS = app.getAssertionConsumerServiceByIndex(index.second);
-            if (!ACS)
-                request.log(SPRequest::SPWarn, "invalid acsIndex property, using default ACS location");
-        }
-        if (!ACS) {
-            const vector<const Handler*>& endpoints = app.getAssertionConsumerServicesByBinding(m_binding.get());
-            if (endpoints.empty()) {
-                m_log.error("unable to locate a compatible ACS");
-                throw ConfigurationException("Unable to locate an ADFS-compatible ACS in the configuration.");
-            }
-            ACS = endpoints.front();
-        }
     }
 
     // Validate the ACS for use with this protocol.
-    pair<bool,const XMLCh*> ACSbinding = ACS->getXMLString("Binding");
-    if (ACSbinding.first) {
-        if (!XMLString::equals(ACSbinding.second, m_binding.get())) {
-            m_log.error("configured or requested ACS has non-ADFS binding");
-            throw ConfigurationException("Configured or requested ACS has non-ADFS binding ($1).", params(1, ACSbinding.second));
-        }
+    if (!ACS || !XMLString::equals(getProtocolFamily(), ACS->getProtocolFamily())) {
+        if (ACS)
+            request.log(SPRequest::SPWarn, "invalid acsIndex property, or non-ADFS ACS, using default ADFS ACS");
+        ACS = app.getAssertionConsumerServiceByProtocol(getProtocolFamily());
+        if (!ACS)
+            throw ConfigurationException("Unable to locate an ADFS-compatible ACS in the configuration.");
     }
 
     // Since we're not passing by index, we need to fully compute the return URL.
     // Compute the ACS URL. We add the ACS location to the base handlerURL.
     string ACSloc=request.getHandlerURL(target.c_str());
-    pair<bool,const char*> loc=ACS->getString("Location");
-    if (loc.first) ACSloc+=loc.second;
+    prop = ACS->getString("Location");
+    if (prop.first)
+        ACSloc += prop.second;
 
     if (isHandler) {
         // We may already have RelayState set if we looped back here,
-        // but just in case target is a resource, we reset it back.
-        target.erase();
-        option = request.getParameter("target");
-        if (option)
-            target = option;
+        // but we've turned it back into a resource by this point, so if there's
+        // a target on the URL, reset to that value.
+        prop.second = request.getParameter("target");
+        if (prop.second && *prop.second)
+            target = prop.second;
     }
 
     m_log.debug("attempting to initiate session using ADFS with provider (%s)", entityID.c_str());
@@ -410,7 +405,7 @@ pair<bool,long> ADFSSessionInitiator::run(SPRequest& request, string& entityID, 
         // Out of process means the POST data via the request can be exposed directly to the private method.
         // The method will handle POST preservation if necessary *before* issuing the response, but only if
         // it dispatches to an IdP.
-        return doRequest(app, &request, request, entityID.c_str(), ACSloc.c_str(), (acClass.first ? acClass.second : NULL), target);
+        return doRequest(app, &request, request, entityID.c_str(), ACSloc.c_str(), (acClass.first ? acClass.second : nullptr), target);
     }
 
     // Remote the call.
@@ -443,7 +438,7 @@ void ADFSSessionInitiator::receive(DDF& in, ostream& out)
 {
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) to generate ADFS request", aid ? aid : "(missing)");
@@ -455,7 +450,7 @@ void ADFSSessionInitiator::receive(DDF& in, ostream& out)
     if (!entityID || !acsLocation)
         throw ConfigurationException("No entityID or acsLocation parameter supplied to remoted SessionInitiator.");
 
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
 
     // Wrap the outgoing object with a Response facade.
@@ -466,7 +461,7 @@ void ADFSSessionInitiator::receive(DDF& in, ostream& out)
     // Since we're remoted, the result should either be a throw, which we pass on,
     // a false/0 return, which we just return as an empty structure, or a response/redirect,
     // which we capture in the facade and send back.
-    doRequest(*app, NULL, *http.get(), entityID, acsLocation, in["authnContextClassRef"].string(), relayState);
+    doRequest(*app, nullptr, *http.get(), entityID, acsLocation, in["authnContextClassRef"].string(), relayState);
     if (!ret.isstruct())
         ret.structure();
     ret.addmember("RelayState").unsafe_string(relayState.c_str());
@@ -512,7 +507,7 @@ pair<bool,long> ADFSSessionInitiator::doRequest(
     preserveRelayState(app, httpResponse, relayState);
 
     // UTC timestamp
-    time_t epoch=time(NULL);
+    time_t epoch=time(nullptr);
 #ifndef HAVE_GMTIME_R
     struct tm* ptime=gmtime(&epoch);
 #else
@@ -597,7 +592,7 @@ void ADFSConsumer::implementProtocol(
     const HTTPRequest& httpRequest,
     HTTPResponse& httpResponse,
     SecurityPolicy& policy,
-    const PropertySet* settings,
+    const PropertySet*,
     const XMLObject& xmlObject
     ) const
 {
@@ -610,7 +605,7 @@ void ADFSConsumer::implementProtocol(
     if (!response || !response->hasChildren())
         throw FatalProfileException("Incoming message was not of the proper type or contains no security token.");
 
-    const Assertion* token = NULL;
+    const Assertion* token = nullptr;
     for (vector<XMLObject*>::const_iterator xo = response->getUnknownXMLObjects().begin(); xo != response->getUnknownXMLObjects().end(); ++xo) {
     	// Look for the RequestedSecurityToken element.
     	if (XMLString::equals((*xo)->getElementQName().getLocalPart(), RequestedSecurityToken)) {
@@ -628,7 +623,7 @@ void ADFSConsumer::implementProtocol(
     extractMessageDetails(*token, m_protocol.get(), policy);
 
     // Populate recipient as audience.
-    const EntityDescriptor* entity = policy.getIssuerMetadata() ? dynamic_cast<const EntityDescriptor*>(policy.getIssuerMetadata()->getParent()) : NULL;
+    const EntityDescriptor* entity = policy.getIssuerMetadata() ? dynamic_cast<const EntityDescriptor*>(policy.getIssuerMetadata()->getParent()) : nullptr;
     policy.getAudiences().push_back(application.getRelyingParty(entity)->getXMLString("entityID").second);
 
     // Run the policy over the assertion. Handles replay, freshness, and
@@ -640,11 +635,11 @@ void ADFSConsumer::implementProtocol(
     if (!policy.isAuthenticated())
         throw SecurityPolicyException("Unable to establish security of incoming assertion.");
 
-    saml1::NameIdentifier* saml1name=NULL;
-    saml2::NameID* saml2name=NULL;
-    const XMLCh* authMethod=NULL;
-    const XMLCh* authInstant=NULL;
-    time_t now = time(NULL), sessionExp = 0;
+    saml1::NameIdentifier* saml1name=nullptr;
+    saml2::NameID* saml2name=nullptr;
+    const XMLCh* authMethod=nullptr;
+    const XMLCh* authInstant=nullptr;
+    time_t now = time(nullptr), sessionExp = 0;
     const PropertySet* sessionProps = application.getPropertySet("Sessions");
 
     const saml1::Assertion* saml1token = dynamic_cast<const saml1::Assertion*>(token);
@@ -707,7 +702,7 @@ void ADFSConsumer::implementProtocol(
             checkAddress(application, httpRequest, ip.get());
         }
 
-        saml2name = saml2token->getSubject() ? saml2token->getSubject()->getNameID() : NULL;
+        saml2name = saml2token->getSubject() ? saml2token->getSubject()->getNameID() : nullptr;
         if (ssoStatement->getAuthnContext() && ssoStatement->getAuthnContext()->getAuthnContextClassRef())
             authMethod = ssoStatement->getAuthnContext()->getAuthnContextClassRef()->getReference();
         if (ssoStatement->getAuthnInstant())
@@ -730,7 +725,7 @@ void ADFSConsumer::implementProtocol(
     // To complete processing, we need to extract and resolve attributes and then create the session.
 
     // Normalize a SAML 1.x NameIdentifier...
-    auto_ptr<saml2::NameID> nameid(saml1name ? saml2::NameIDBuilder::buildNameID() : NULL);
+    auto_ptr<saml2::NameID> nameid(saml1name ? saml2::NameIDBuilder::buildNameID() : nullptr);
     if (saml1name) {
         nameid->setName(saml1name->getName());
         nameid->setFormat(saml1name->getFormat());
@@ -747,7 +742,7 @@ void ADFSConsumer::implementProtocol(
             saml1name,
             (saml1name ? nameid.get() : saml2name),
             authMethod,
-            NULL,
+            nullptr,
             &tokens
             )
         );
@@ -766,11 +761,11 @@ void ADFSConsumer::implementProtocol(
         m_protocol.get(),
         (saml1name ? nameid.get() : saml2name),
         authInstant,
-        NULL,
+        nullptr,
         authMethod,
-        NULL,
+        nullptr,
         &tokens,
-        ctx.get() ? &ctx->getResolvedAttributes() : NULL
+        ctx.get() ? &ctx->getResolvedAttributes() : nullptr
         );
 }
 
@@ -784,7 +779,7 @@ pair<bool,long> ADFSLogoutInitiator::run(SPRequest& request, bool isHandler) con
     // Basically we have no way to tell in the Logout receiving handler whether
     // we initiated the logout or not.
 
-    Session* session = NULL;
+    Session* session = nullptr;
     try {
         session = request.getSession(false, true, false);  // don't cache it and ignore all checks
         if (!session)
@@ -828,7 +823,7 @@ void ADFSLogoutInitiator::receive(DDF& in, ostream& out)
 
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for logout", aid ? aid : "(missing)");
@@ -839,13 +834,13 @@ void ADFSLogoutInitiator::receive(DDF& in, ostream& out)
     auto_ptr<HTTPRequest> req(getRequest(in));
 
     // Set up a response shim.
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
     auto_ptr<HTTPResponse> resp(getResponse(ret));
 
-    Session* session = NULL;
+    Session* session = nullptr;
     try {
-         session = app->getServiceProvider().getSessionCache()->find(*app, *req.get(), NULL, NULL);
+         session = app->getServiceProvider().getSessionCache()->find(*app, *req.get(), nullptr, nullptr);
     }
     catch (exception& ex) {
         m_log.error("error accessing current session: %s", ex.what());
@@ -928,7 +923,7 @@ pair<bool,long> ADFSLogoutInitiator::doRequest(
 
     if (session) {
         session->unlock();
-        session = NULL;
+        session = nullptr;
         application.getServiceProvider().getSessionCache()->remove(application, httpRequest, &httpResponse);
     }
 

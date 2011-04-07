@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2007 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@
 #include "internal.h"
 #include "Application.h"
 #include "exceptions.h"
-#include "SPRequest.h"
 #include "handler/AbstractHandler.h"
 #include "handler/SessionInitiator.h"
 #include "util/TemplateParameters.h"
@@ -74,34 +73,43 @@ namespace shibsp {
 
 pair<bool,long> FormSessionInitiator::run(SPRequest& request, string& entityID, bool isHandler) const
 {
+    if (!checkCompatibility(request, isHandler))
+        return make_pair(false,0L);
+
     string target;
-    const char* option;
+    pair<bool,const char*> prop;
     const Application& app=request.getApplication();
 
     if (isHandler) {
-        option = request.getParameter("target");
-        if (option)
-            target = option;
+        prop = getString("target", request);
+        if (prop.first)
+            target = prop.second;
         recoverRelayState(app, request, request, target, false);
     }
     else {
-        // We're running as a "virtual handler" from within the filter.
-        // The target resource is the current one.
-        target=request.getRequestURL();
+        // Check for a hardwired target value in the map or handler.
+        prop = getString("target", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
+        if (prop.first)
+            target = prop.second;
+        else
+            target = request.getRequestURL();
     }
 
     // Compute the return URL. We start with a self-referential link.
     string returnURL=request.getHandlerURL(target.c_str());
     pair<bool,const char*> thisloc = getString("Location");
-    if (thisloc.first) returnURL += thisloc.second;
+    if (thisloc.first)
+        returnURL += thisloc.second;
 
     if (isHandler) {
         // We may already have RelayState set if we looped back here,
-        // but just in case target is a resource, we reset it back.
-        option = request.getParameter("target");
-        if (option)
-            target = option;
+        // but we've turned it back into a resource by this point, so if there's
+        // a target on the URL, reset to that value.
+        prop.second = request.getParameter("target");
+        if (prop.second && *prop.second)
+            target = prop.second;
     }
+
     preserveRelayState(app, request, target);
 
     request.setContentType("text/html");

@@ -64,28 +64,10 @@
 
             <xsl:text>&#10;&#10;    </xsl:text>
             <xsl:comment>
-                <xsl:text> Each policy defines a set of rules to use to secure messages. </xsl:text>
+                <xsl:text> Policies that determine how to process and authenticate runtime messages. </xsl:text>
             </xsl:comment>
             <xsl:text>&#10;    </xsl:text>
-            <SecurityPolicies>
-                <xsl:text>&#10;        </xsl:text>
-                <xsl:comment>
-                    <xsl:text> The predefined policy enforces replay/freshness and permits signing and client TLS. </xsl:text>
-                </xsl:comment>
-                <xsl:text>&#10;        </xsl:text>
-                <Policy id="default" validate="false">
-                    <xsl:text>&#10;            </xsl:text>
-                    <Rule type="MessageFlow" checkReplay="true" expires="60"/>
-                    <xsl:text>&#10;            </xsl:text>
-                    <Rule type="ClientCertAuth" errorFatal="true"/>
-                    <xsl:text>&#10;            </xsl:text>
-                    <Rule type="XMLSigning" errorFatal="true"/>
-                    <xsl:text>&#10;            </xsl:text>
-                    <Rule type="SimpleSigning" errorFatal="true"/>
-                    <xsl:text>&#10;        </xsl:text>
-                </Policy>
-                <xsl:text>&#10;    </xsl:text>
-            </SecurityPolicies>
+            <SecurityPolicyProvider type="XML" validate="true" path="security-policy.xml"/>
             <xsl:text>&#10;&#10;</xsl:text>
         </SPConfig>
     </xsl:template>
@@ -223,8 +205,7 @@
        
             <xsl:for-each select="oldconf:Application">
                 <xsl:text>&#10;        </xsl:text>
-                <ApplicationOverride>
-                    <xsl:apply-templates select="@*"/>
+                <ApplicationOverride id="{@id}" entityID="{@providerId}" homeURL="{@homeURL}">
                     <xsl:apply-templates select="oldconf:Sessions"/>
                     <xsl:apply-templates select="oldconf:Errors"/>
                     <xsl:apply-templates select="oldconf:CredentialUse"/>
@@ -382,9 +363,9 @@
                 </xsl:if>
             </xsl:if>
             <xsl:text>&#10;                </xsl:text>
-            <SessionInitiator type="SAML2" defaultACSIndex="1" ECP="true" template="bindingTemplate.html"/>
+            <SessionInitiator type="SAML2" acsIndex="1" ECP="true" template="bindingTemplate.html"/>
             <xsl:text>&#10;                </xsl:text>
-            <SessionInitiator type="Shib1" defaultACSIndex="4"/>
+            <SessionInitiator type="Shib1" acsIndex="5"/>
             <xsl:if test="@wayfURL">
                 <xsl:if test="@wayfBinding='urn:mace:shibboleth:1.0:profiles:AuthnRequest'">
                     <xsl:text>&#10;                </xsl:text>
@@ -400,8 +381,6 @@
         <xsl:text>&#10;        </xsl:text>
         <Errors>
             <xsl:apply-templates select="@*"/>
-            <xsl:attribute name="localLogout">localLogout.html</xsl:attribute>
-            <xsl:attribute name="globalLogout">globalLogout.html</xsl:attribute>
             <xsl:text>&#10;        </xsl:text>
         </Errors>
         <xsl:text>&#10;</xsl:text>

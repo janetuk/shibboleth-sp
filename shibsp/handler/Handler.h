@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #ifndef __shibsp_handler_h__
 #define __shibsp_handler_h__
 
+#include <shibsp/SPRequest.h>
 #include <shibsp/util/PropertySet.h>
 
 #ifndef SHIBSP_LITE
@@ -33,9 +34,12 @@ namespace opensaml {
 };
 #endif
 
-namespace shibsp {
+namespace xmltooling {
+    class XMLTOOL_API HTTPRequest;
+    class XMLTOOL_API HTTPResponse;
+};
 
-    class SHIBSP_API SPRequest;
+namespace shibsp {
 
     /**
      * Pluggable runtime functionality that implement protocols and services
@@ -45,8 +49,60 @@ namespace shibsp {
         MAKE_NONCOPYABLE(Handler);
     protected:
         Handler();
+
+        /**
+         * Log using handler's specific logging object.
+         *
+         * @param level logging level
+         * @param msg   message to log
+         */
+        virtual void log(SPRequest::SPLogLevel level, const std::string& msg) const;
+
+        /**
+         * Implements various mechanisms to preserve RelayState,
+         * such as cookies or StorageService-backed keys.
+         *
+         * <p>If a supported mechanism can be identified, the input parameter will be
+         * replaced with a suitable state key.
+         *
+         * @param application   the associated Application
+         * @param response      outgoing HTTP response
+         * @param relayState    RelayState token to supply with message
+         */
+        virtual void preserveRelayState(
+            const Application& application, xmltooling::HTTPResponse& response, std::string& relayState
+            ) const;
+
+        /**
+         * Implements various mechanisms to recover RelayState,
+         * such as cookies or StorageService-backed keys.
+         *
+         * <p>If a supported mechanism can be identified, the input parameter will be
+         * replaced with the recovered state information.
+         *
+         * @param application   the associated Application
+         * @param request       incoming HTTP request
+         * @param response      outgoing HTTP response
+         * @param relayState    RelayState token supplied with message
+         * @param clear         true iff the token state should be cleared
+         */
+        virtual void recoverRelayState(
+            const Application& application,
+            const xmltooling::HTTPRequest& request,
+            xmltooling::HTTPResponse& response,
+            std::string& relayState,
+            bool clear=true
+            ) const;
+
     public:
         virtual ~Handler();
+
+        /**
+         * Returns an identifier for the protocol family associated with the handler, if any.
+         *
+         * @return  a protocol identifier, or nullptr
+         */
+        virtual const XMLCh* getProtocolFamily() const;
 
         /**
          * Executes handler functionality as an incoming request.
@@ -69,8 +125,7 @@ namespace shibsp {
          * @param role          metadata role to decorate
          * @param handlerURL    base location of handler's endpoint
          */
-        virtual void generateMetadata(opensaml::saml2md::SPSSODescriptor& role, const char* handlerURL) const {
-        }
+        virtual void generateMetadata(opensaml::saml2md::SPSSODescriptor& role, const char* handlerURL) const;
 
         /**
          * Returns the "type" of the Handler plugin.
@@ -83,6 +138,24 @@ namespace shibsp {
     
     /** Registers Handler implementations. */
     void SHIBSP_API registerHandlers();
+
+    /** Handler for SAML 1.x SSO. */
+    #define SAML1_ASSERTION_CONSUMER_SERVICE "SAML1"
+
+    /** Handler for SAML 2.0 SSO. */
+    #define SAML20_ASSERTION_CONSUMER_SERVICE "SAML2"
+
+    /** Handler for SAML 2.0 SLO. */
+    #define SAML20_LOGOUT_HANDLER "SAML2"
+
+    /** Handler for SAML 2.0 NIM. */
+    #define SAML20_NAMEID_MGMT_SERVICE "SAML2"
+
+    /** Handler for SAML 2.0 Artifact Resolution. */
+    #define SAML20_ARTIFACT_RESOLUTION_SERVICE "SAML2"
+
+    /** Handler for metadata generation. */
+    #define DISCOVERY_FEED_HANDLER "DiscoveryFeed"
 
     /** Handler for metadata generation. */
     #define METADATA_GENERATOR_HANDLER "MetadataGenerator"

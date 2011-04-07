@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2011 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@
 # include "attribute/resolver/ResolutionContext.h"
 # include "metadata/MetadataProviderCriteria.h"
 # include "security/SecurityPolicy.h"
+# include "security/SecurityPolicyProvider.h"
 # include <saml/exceptions.h>
 # include <saml/SAMLConfig.h>
 # include <saml/saml1/core/Assertions.h>
@@ -63,7 +64,7 @@ AssertionConsumerService::AssertionConsumerService(
     const DOMElement* e, const char* appId, Category& log, DOMNodeFilter* filter, const map<string,string>* remapper
     ) : AbstractHandler(e, log, filter, remapper)
 #ifndef SHIBSP_LITE
-        ,m_decoder(NULL), m_role(samlconstants::SAML20MD_NS, opensaml::saml2md::IDPSSODescriptor::LOCAL_NAME)
+        ,m_decoder(nullptr), m_role(samlconstants::SAML20MD_NS, opensaml::saml2md::IDPSSODescriptor::LOCAL_NAME)
 #endif
 {
     if (!e)
@@ -111,7 +112,7 @@ void AssertionConsumerService::receive(DDF& in, ostream& out)
 {
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for new session", aid ? aid : "(missing)");
@@ -122,7 +123,7 @@ void AssertionConsumerService::receive(DDF& in, ostream& out)
     auto_ptr<HTTPRequest> req(getRequest(in));
 
     // Wrap a response shim.
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
     auto_ptr<HTTPResponse> resp(getResponse(ret));
 
@@ -143,19 +144,16 @@ pair<bool,long> AssertionConsumerService::processMessage(
     if (!policyId.first)
         policyId = application.getString("policyId");   // unqualified in Application(s) element
 
-    // Access policy properties.
-    const PropertySet* settings = application.getServiceProvider().getPolicySettings(policyId.second);
-    pair<bool,bool> validate = settings->getBool("validate");
-
     // Lock metadata for use by policy.
     Locker metadataLocker(application.getMetadataProvider());
 
     // Create the policy.
     auto_ptr<opensaml::SecurityPolicy> policy(
-        createSecurityPolicy(application, &m_role, validate.first && validate.second, policyId.second)
+        application.getServiceProvider().getSecurityPolicyProvider()->createSecurityPolicy(application, &m_role, policyId.second)
         );
 
     string relayState;
+    bool relayStateOK = true;
     try {
         // Decode the message and process it in a protocol-specific way.
         auto_ptr<XMLObject> msg(m_decoder->decode(relayState, httpRequest, *(policy.get())));
@@ -164,9 +162,10 @@ pair<bool,long> AssertionConsumerService::processMessage(
         DDF postData = recoverPostData(application, httpRequest, httpResponse, relayState.c_str());
         DDFJanitor postjan(postData);
         recoverRelayState(application, httpRequest, httpResponse, relayState);
-        implementProtocol(application, httpRequest, httpResponse, *(policy.get()), settings, *msg.get());
+        limitRelayState(m_log, application, httpRequest, relayState.c_str());
+        implementProtocol(application, httpRequest, httpResponse, *(policy.get()), NULL, *msg.get());
 
-        auto_ptr_char issuer(policy->getIssuer() ? policy->getIssuer()->getName() : NULL);
+        auto_ptr_char issuer(policy->getIssuer() ? policy->getIssuer()->getName() : nullptr);
 
         // History cookie.
         if (issuer.get() && *issuer.get())
@@ -184,13 +183,15 @@ pair<bool,long> AssertionConsumerService::processMessage(
         }
     }
     catch (XMLToolingException& ex) {
-        // Check for isPassive error condition.
-        const char* sc2 = ex.getProperty("statusCode2");
-        if (sc2 && !strcmp(sc2, "urn:oasis:names:tc:SAML:2.0:status:NoPassive")) {
-            validate = getBool("ignoreNoPassive", m_configNS.get());  // namespace-qualified if inside handler element
-            if (validate.first && validate.second && !relayState.empty()) {
-                m_log.debug("ignoring SAML status of NoPassive and redirecting to resource...");
-                return make_pair(true, httpResponse.sendRedirect(relayState.c_str()));
+        if (relayStateOK) {
+            // Check for isPassive error condition.
+            const char* sc2 = ex.getProperty("statusCode2");
+            if (sc2 && !strcmp(sc2, "urn:oasis:names:tc:SAML:2.0:status:NoPassive")) {
+                pair<bool,bool> ignore = getBool("ignoreNoPassive", m_configNS.get());  // namespace-qualified if inside handler element
+                if (ignore.first && ignore.second && !relayState.empty()) {
+                    m_log.debug("ignoring SAML status of NoPassive and redirecting to resource...");
+                    return make_pair(true, httpResponse.sendRedirect(relayState.c_str()));
+                }
             }
         }
         if (!relayState.empty())
@@ -226,6 +227,11 @@ void AssertionConsumerService::checkAddress(const Application& application, cons
 }
 
 #ifndef SHIBSP_LITE
+
+const XMLCh* AssertionConsumerService::getProtocolFamily() const
+{
+    return m_decoder ? m_decoder->getProtocolFamily() : nullptr;
+}
 
 const char* AssertionConsumerService::getType() const
 {
@@ -314,8 +320,8 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
             if (mprefix.first) {
                 m_log.debug("extracting metadata-derived attributes...");
                 try {
-                    // We pass NULL for "issuer" because the IdP isn't the one asserting metadata-based attributes.
-                    extractor->extractAttributes(application, NULL, *issuer, resolvedAttributes);
+                    // We pass nullptr for "issuer" because the IdP isn't the one asserting metadata-based attributes.
+                    extractor->extractAttributes(application, nullptr, *issuer, resolvedAttributes);
                     for (vector<Attribute*>::iterator a = resolvedAttributes.begin(); a != resolvedAttributes.end(); ++a) {
                         vector<string>& ids = (*a)->getAliases();
                         for (vector<string>::iterator id = ids.begin(); id != ids.end(); ++id)
@@ -383,7 +389,7 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
             auto_ptr<ResolutionContext> ctx(
                 resolver->createResolutionContext(
                     application,
-                    issuer ? dynamic_cast<const saml2md::EntityDescriptor*>(issuer->getParent()) : NULL,
+                    issuer ? dynamic_cast<const saml2md::EntityDescriptor*>(issuer->getParent()) : nullptr,
                     protocol,
                     nameid,
                     authncontext_class,
@@ -405,7 +411,7 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
 
     if (!resolvedAttributes.empty())
         return new DummyContext(resolvedAttributes);
-    return NULL;
+    return nullptr;
 }
 
 void AssertionConsumerService::extractMessageDetails(const Assertion& assertion, const XMLCh* protocol, opensaml::SecurityPolicy& policy) const
@@ -479,7 +485,7 @@ void AssertionConsumerService::maintainHistory(
             response.setCookie(CommonDomainCookie::CDCName, c.c_str());
         }
         else {
-            time_t now=time(NULL) + (days.second * 24 * 60 * 60);
+            time_t now=time(nullptr) + (days.second * 24 * 60 * 60);
 #ifdef HAVE_GMTIME_R
             struct tm res;
             struct tm* ptime=gmtime_r(&now,&res);
