@@ -86,3 +86,6 @@ override_dh_installdocs:
 
 override_dh_installinit:
 	dh_installinit --name=shibd
+
+%:
+	dh $@
