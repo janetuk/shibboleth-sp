@@ -32,6 +32,7 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
     - Allow overriding listener details to permit use of a shared config
     - Add error information to attribute ResolutionContext
     - Multiple bug fixes
+  * Update debian/copyright to the current DEP-5 specification.
 
  -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
 
