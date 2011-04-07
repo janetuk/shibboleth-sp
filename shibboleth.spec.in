@@ -1,34 +1,28 @@
-Name:		@PACKAGE@
+Name:		@PACKAGE_NAME@
 Version:	@PACKAGE_VERSION@
 Release:	1
 Summary:    Open source system for attribute-based Web SSO
-Group:		System Environment/Libraries
+Group:		Productivity/Networking/Security
 Vendor:     Internet2
 License:	Apache 2.0
 URL:		http://shibboleth.internet2.edu/
 Source:     %{name}-sp-%{version}.tar.gz
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
-PreReq:     openssl
-%if 0%{?suse_version} > 1030
+PreReq:     openssl, xmltooling-schemas, opensaml-schemas
+%if 0%{?suse_version} > 1030 && 0%{?suse_version} < 1130
 PreReq:         %{insserv_prereq}
 BuildRequires:  libXerces-c-devel >= 2.8.0
+%else
+BuildRequires:  libxerces-c-devel >= 2.8.0
+%endif
 BuildRequires:  libxml-security-c-devel >= 1.4.0
-BuildRequires:  libxmltooling-devel >= 1.3
-BuildRequires:  libsaml-devel >= 2.3
+BuildRequires:  libxmltooling-devel >= 1.4
+BuildRequires:  libsaml-devel >= 2.4
 %{?_with_log4cpp:BuildRequires: liblog4cpp-devel >= 1.0}
 %{!?_with_log4cpp:BuildRequires: liblog4shib-devel}
-%else
-BuildRequires:  xerces%{?xercesver}-c-devel >= 2.8.0
-BuildRequires:  xml-security-c-devel >= 1.4.0
-BuildRequires:  xmltooling-devel >= 1.3
-BuildRequires:  opensaml-devel >= 2.3
-%{?_with_log4cpp:BuildRequires: log4cpp-devel >= 1.0}
-%{!?_with_log4cpp:BuildRequires: log4shib-devel}
-%endif
-BuildRequires:  gcc-c++
+BuildRequires:  gcc-c++, zlib-devel
 %{!?_without_doxygen:BuildRequires: doxygen}
 %{!?_without_odbc:BuildRequires:unixODBC-devel}
-BuildRequires:  zlib-devel
 %{?_with_fastcgi:BuildRequires: fcgi-devel}
 %if "%{_vendor}" == "redhat"
 %{!?_without_builtinapache:BuildRequires: httpd-devel}
@@ -53,24 +47,19 @@ This package contains the Shibboleth Service Provider runtime libraries
 and Apache module(s).
 
 %package devel
-Summary: Shibboleth development Headers
-Group: Development/Libraries
-Requires: %{name} = %{version}
-%if 0%{?suse_version} > 1030
-Requires: libXerces-c-devel >= 2.8.0
-Requires: libxml-security-c-devel >= 1.4.0
-Requires: libxmltooling-devel >= 1.3
-Requires: libsaml-devel >= 2.3
+Summary:	Shibboleth development Headers
+Group:		Development/Libraries/C and C++
+Requires:	%{name} = %{version}-%{release}
+%if 0%{?suse_version} > 1030 && 0%{?suse_version} < 1130
+Requires:	libXerces-c-devel >= 2.8.0
+%else
+Requires: 	libxerces-c-devel >= 2.8.0
+%endif
+Requires: 	libxml-security-c-devel >= 1.4.0
+Requires: 	libxmltooling-devel >= 1.4
+Requires: 	libsaml-devel >= 2.4
 %{?_with_log4cpp:Requires: liblog4cpp-devel >= 1.0}
 %{!?_with_log4cpp:Requires: liblog4shib-devel}
-%else
-Requires: xerces%{?xercesver}-c-devel >= 2.8.0
-Requires: xml-security-c-devel >= 1.4.0
-Requires: xmltooling-devel >= 1.3
-Requires: opensaml-devel >= 2.3
-%{?_with_log4cpp:Requires: log4cpp-devel >= 1.0}
-%{!?_with_log4cpp:Requires: log4shib-devel}
-%endif
 
 %description devel
 Shibboleth is a Web Single Sign-On implementations based on OpenSAML
@@ -78,7 +67,6 @@ that supports multiple protocols, federated identity, and the extensible
 exchange of rich attributes subject to privacy controls.
 
 This package includes files needed for development with Shibboleth.
-
 
 %prep
 %setup -q
@@ -244,6 +232,9 @@ cd /
 %doc %{pkgdocdir}/api
 
 %changelog
+* Fri Dec 25 2009  Scott Cantor  <cantor.2@osu.edu>  - 2.4-1
+- Update dependencies.
+
 * Mon Nov 23 2009 Scott Cantor  <cantor.2@osu.edu>  - 2.3.1-1
 - Reset revision for 2.3.1 release
 

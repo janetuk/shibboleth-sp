@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 
 #include <shibsp/util/PropertySet.h>
 
+#include <set>
 #include <xmltooling/Lockable.h>
 
 namespace xmltooling {
@@ -43,12 +44,19 @@ namespace shibsp {
     class SHIBSP_API Application;
     class SHIBSP_API Handler;
     class SHIBSP_API ListenerService;
+    class SHIBSP_API Remoted;
     class SHIBSP_API RequestMapper;
     class SHIBSP_API SessionCache;
     class SHIBSP_API SPRequest;
     class SHIBSP_API TemplateParameters;
 #ifndef SHIBSP_LITE
+    class SHIBSP_API SecurityPolicyProvider;
     class SHIBSP_API TransactionLog;
+#endif
+
+#if defined (_MSC_VER)
+    #pragma warning( push )
+    #pragma warning( disable : 4251 )
 #endif
 
     /**
@@ -85,8 +93,8 @@ namespace shibsp {
         /**
          * Returns a StorageService instance based on an ID.
          * 
-         * @param id    a NULL-terminated key identifying the StorageService to the configuration 
-         * @return  a StorageService if available, or NULL
+         * @param id    a nullptr-terminated key identifying the StorageService to the configuration 
+         * @return  a StorageService if available, or nullptr
          */
         virtual xmltooling::StorageService* getStorageService(const char* id) const=0;
 #endif
@@ -109,17 +117,27 @@ namespace shibsp {
         
 #ifndef SHIBSP_LITE
         /**
+         * Returns a SecurityPolicyProvider instance.
+         *
+         * @param required true iff an exception should be thrown if no SecurityPolicyProvider is available
+         * @return  a SecurityPolicyProvider
+         */
+        virtual SecurityPolicyProvider* getSecurityPolicyProvider(bool required=true) const;
+
+        /**
+         * @deprecated
 		 * Returns the security policy settings for an identified policy.
          *
-		 * @param id    identifies the policy to return
+		 * @param id    identifies the policy to return, or nullptr for default
          * @return a PropertySet
 		 */
         virtual const PropertySet* getPolicySettings(const char* id) const=0;
 
         /**
+         * @deprecated
 		 * Returns the security policy rules for an identified policy.
          *
-		 * @param id    identifies the policy to return
+		 * @param id    identifies the policy to return, or nullptr for default
          * @return an array of policy rules
 		 */
         virtual const std::vector<const opensaml::SecurityPolicyRule*>& getPolicyRules(const char* id) const=0;
@@ -144,8 +162,8 @@ namespace shibsp {
         /**
          * Returns an Application instance matching the specified ID.
          * 
-         * @param applicationId the ID of the application
-         * @return  pointer to the application, or NULL
+         * @param applicationId the ID of the application, or nullptr for the default
+         * @return  pointer to the application, or nullptr
          */
         virtual const Application* getApplication(const char* applicationId) const=0;
 
@@ -194,7 +212,45 @@ namespace shibsp {
          * @return a pair containing a "request completed" indicator and a server-specific response code
          */
         virtual std::pair<bool,long> doHandler(SPRequest& request) const;
+
+        /**
+         * Register for a message. Returns existing remote service, allowing message hooking.
+         *
+         * @param address   message address to register
+         * @param svc       pointer to remote service
+         * @return  previous service registered for message, if any
+         */
+        virtual Remoted* regListener(const char* address, Remoted* svc);
+
+        /**
+         * Unregisters service from an address, possibly restoring an original.
+         *
+         * @param address   message address to modify
+         * @param current   pointer to unregistering service
+         * @param restore   service to "restore" registration for
+         * @return  true iff the current service was still registered
+         */
+        virtual bool unregListener(const char* address, Remoted* current, Remoted* restore=nullptr);
+
+        /**
+         * Returns current service registered at an address, if any.
+         *
+         * @param address message address to access
+         * @return  registered service, or nullptr
+         */
+        virtual Remoted* lookupListener(const char* address) const;
+
+    protected:
+        /** The AuthTypes to "recognize" (defaults to "shibboleth"). */
+        std::set<std::string> m_authTypes;
+
+    private:
+        std::map<std::string,Remoted*> m_listenerMap;
     };
+
+#if defined (_MSC_VER)
+    #pragma warning( pop )
+#endif
 
     /**
      * Registers ServiceProvider classes into the runtime.

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ namespace shibsp {
             const XMLCh* authncontext_decl,
             const vector<const opensaml::Assertion*>* tokens,
             const vector<shibsp::Attribute*>* attributes
-            ) : m_app(application), m_issuer(issuer), m_protocol(protocol), m_nameid(nameid), m_authclass(authncontext_class), m_authdecl(authncontext_decl), m_session(NULL) {
+            ) : m_app(application), m_issuer(issuer), m_protocol(protocol), m_nameid(nameid), m_authclass(authncontext_class), m_authdecl(authncontext_decl), m_session(nullptr) {
             if (tokens)
                 m_tokens.assign(tokens->begin(), tokens->end());
             if (attributes)
@@ -105,11 +105,11 @@ namespace shibsp {
             const Application& application,
             const EntityDescriptor* issuer,
             const XMLCh* protocol,
-            const NameID* nameid=NULL,
-            const XMLCh* authncontext_class=NULL,
-            const XMLCh* authncontext_decl=NULL,
-            const vector<const opensaml::Assertion*>* tokens=NULL,
-            const vector<shibsp::Attribute*>* attributes=NULL
+            const NameID* nameid=nullptr,
+            const XMLCh* authncontext_class=nullptr,
+            const XMLCh* authncontext_decl=nullptr,
+            const vector<const opensaml::Assertion*>* tokens=nullptr,
+            const vector<shibsp::Attribute*>* attributes=nullptr
             ) const {
             return new ChainingContext(application, issuer, protocol, nameid, authncontext_class, authncontext_decl, tokens, attributes);
         }
@@ -171,12 +171,15 @@ ChainingAttributeResolver::ChainingAttributeResolver(const DOMElement* e)
     SPConfig& conf = SPConfig::getConfig();
 
     // Load up the chain of handlers.
-    e = e ? XMLHelper::getFirstChildElement(e, _AttributeResolver) : NULL;
+    e = XMLHelper::getFirstChildElement(e, _AttributeResolver);
     while (e) {
-        auto_ptr_char type(e->getAttributeNS(NULL,_type));
-        if (type.get() && *(type.get())) {
+        string t(XMLHelper::getAttrString(e, nullptr, _type));
+        if (!t.empty()) {
             try {
-                m_resolvers.push_back(conf.AttributeResolverManager.newPlugin(type.get(),e));
+                Category::getInstance(SHIBSP_LOGCAT".AttributeResolver.Chaining").info(
+                    "building AttributeResolver of type (%s)...", t.c_str()
+                    );
+                m_resolvers.push_back(conf.AttributeResolverManager.newPlugin(t.c_str(), e));
             }
             catch (exception& ex) {
                 Category::getInstance(SHIBSP_LOGCAT".AttributeResolver.Chaining").error(

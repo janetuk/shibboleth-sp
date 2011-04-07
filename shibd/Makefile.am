@@ -1,4 +1,4 @@
-## $Id: Makefile.am 3168 2009-10-31 20:34:11Z cantor $
+## $Id: Makefile.am 3379 2010-11-19 20:59:17Z cantor $
 
 AUTOMAKE_OPTIONS = foreign
 
@@ -6,9 +6,7 @@ sbin_PROGRAMS = shibd
 
 shibd_SOURCES = shibd.cpp
 
-shibd_LDADD = \
+shibd_LDADD = $(XMLSEC_LIBS) \
   $(top_builddir)/shibsp/libshibsp.la
 
-shibd_LDFLAGS = $(XMLSEC_LIBS)
-
-EXTRA_DIST = shibd.vcproj shibd_win32.cpp resource.h shibd.rc
+EXTRA_DIST = shibd.vcxproj shibd_win32.cpp resource.h shibd.rc

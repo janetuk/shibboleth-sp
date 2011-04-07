@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2007 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 /**
  * UnixListener.cpp
  * 
- * Unix Domain-based SocketListener implementation
+ * Unix Domain-based SocketListener implementation.
  */
 
 #include "internal.h"
@@ -27,6 +27,7 @@
 #include <xmltooling/XMLToolingConfig.h>
 #include <xmltooling/unicode.h>
 #include <xmltooling/util/PathResolver.h>
+#include <xmltooling/util/XMLHelper.h>
 
 #ifdef HAVE_UNISTD_H
 # include <sys/socket.h>
@@ -48,8 +49,6 @@ using namespace std;
 
 
 namespace shibsp {
-    static const XMLCh address[] = UNICODE_LITERAL_7(a,d,d,r,e,s,s);
-
     class UnixListener : virtual public SocketListener
     {
     public:
@@ -79,16 +78,16 @@ namespace shibsp {
     {
         return new UnixListener(e);
     }
+
+    static const XMLCh address[] = UNICODE_LITERAL_7(a,d,d,r,e,s,s);
 };
 
-UnixListener::UnixListener(const DOMElement* e) : SocketListener(e), m_address("/var/run/shar-socket"), m_bound(false)
+UnixListener::UnixListener(const DOMElement* e)
+    : SocketListener(e), m_address(XMLHelper::getAttrString(e, getenv("SHIBSP_LISTENER_ADDRESS"), address)), m_bound(false)
 {
-    const XMLCh* tag=e->getAttributeNS(NULL,address);
-    if (tag && *tag) {
-        auto_ptr_char a(tag);
-        m_address=a.get();
-        XMLToolingConfig::getConfig().getPathResolver()->resolve(m_address, PathResolver::XMLTOOLING_RUN_FILE);
-    }
+    if (m_address.empty())
+        m_address = "shibd.sock";
+    XMLToolingConfig::getConfig().getPathResolver()->resolve(m_address, PathResolver::XMLTOOLING_RUN_FILE);
 }
 
 #ifndef UNIX_PATH_MAX
@@ -152,7 +151,7 @@ bool UnixListener::close(ShibSocket& s) const
 
 bool UnixListener::accept(ShibSocket& listener, ShibSocket& s) const
 {
-    s=::accept(listener,NULL,NULL);
+    s=::accept(listener,nullptr,nullptr);
     if (s < 0)
         return log_error();
     return true;

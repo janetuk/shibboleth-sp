@@ -1,6 +1,6 @@
 
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,14 +35,17 @@
 # error "No supported logging library."
 #endif
 
-#include "AccessControl.h"
 #include "exceptions.h"
+#include "version.h"
+#include "AccessControl.h"
 #include "RequestMapper.h"
 #include "ServiceProvider.h"
 #include "SessionCache.h"
 #include "SPConfig.h"
 #include "TransactionLog.h"
 #include "attribute/Attribute.h"
+#include "binding/ProtocolProvider.h"
+#include "handler/LogoutInitiator.h"
 #include "handler/SessionInitiator.h"
 #include "remoting/ListenerService.h"
 
@@ -55,11 +58,14 @@
 # include "binding/ArtifactResolver.h"
 # include "metadata/MetadataExt.h"
 # include "security/PKIXTrustEngine.h"
+# include "security/SecurityPolicyProvider.h"
+# include <saml/version.h>
 # include <saml/SAMLConfig.h>
 #endif
 
 #include <ctime>
 #include <xercesc/util/XMLUniDefs.hpp>
+#include <xmltooling/version.h>
 #include <xmltooling/XMLToolingConfig.h>
 #include <xmltooling/util/NDC.h>
 #include <xmltooling/util/ParserPool.h>
@@ -98,11 +104,11 @@ SPConfig& SPConfig::getConfig()
     return g_config;
 }
 
-SPConfig::SPConfig() : attribute_value_delimeter(';'), m_serviceProvider(NULL),
+SPConfig::SPConfig() : attribute_value_delimeter(';'), m_serviceProvider(nullptr),
 #ifndef SHIBSP_LITE
-    m_artifactResolver(NULL),
+    m_artifactResolver(nullptr),
 #endif
-    m_features(0), m_configDoc(NULL)
+    m_features(0), m_configDoc(nullptr)
 {
 }
 
@@ -115,7 +121,11 @@ void SPConfig::setFeatures(unsigned long enabled)
     m_features = enabled;
 }
 
-bool SPConfig::isEnabled(components_t feature)
+unsigned long SPConfig::getFeatures() const {
+    return m_features;
+}
+
+bool SPConfig::isEnabled(components_t feature) const
 {
     return (m_features & feature)>0;
 }
@@ -181,11 +191,29 @@ bool SPConfig::init(const char* catalog_path, const char* inst_prefix)
     XMLToolingConfig::getConfig().catalog_path = catalog_path;
 
 #ifndef SHIBSP_LITE
+    XMLToolingConfig::getConfig().user_agent = string(PACKAGE_NAME) + '/' + PACKAGE_VERSION +
+        " OpenSAML/" + OPENSAML_FULLVERSIONDOT +
+        " XMLTooling/" + XMLTOOLING_FULLVERSIONDOT +
+        " XML-Security-C/" + XSEC_FULLVERSIONDOT +
+        " Xerces-C/" + XERCES_FULLVERSIONDOT +
+#if defined(LOG4SHIB_VERSION)
+        " log4shib/" + LOG4SHIB_VERSION;
+#elif defined(LOG4CPP_VERSION)
+        " log4cpp/" + LOG4CPP_VERSION;
+#endif
     if (!SAMLConfig::getConfig().init()) {
         log.fatal("failed to initialize OpenSAML library");
         return false;
     }
 #else
+    XMLToolingConfig::getConfig().user_agent = string(PACKAGE_NAME) + '/' + PACKAGE_VERSION +
+        " XMLTooling/" + XMLTOOLING_FULLVERSIONDOT +
+        " Xerces-C/" + XERCES_FULLVERSIONDOT +
+#if defined(LOG4SHIB_VERSION)
+        " log4shib/" + LOG4SHIB_VERSION;
+#elif defined(LOG4CPP_VERSION)
+        " log4cpp/" + LOG4CPP_VERSION;
+#endif
     if (!XMLToolingConfig::getConfig().init()) {
         log.fatal("failed to initialize XMLTooling library");
         return false;
@@ -239,8 +267,14 @@ bool SPConfig::init(const char* catalog_path, const char* inst_prefix)
 #endif
 
     registerAttributeFactories();
-    registerHandlers();
-    registerSessionInitiators();
+
+    if (isEnabled(Handlers)) {
+        registerHandlers();
+        registerLogoutInitiators();
+        registerSessionInitiators();
+        registerProtocolProviders();
+    }
+
     registerServiceProviders();
 
 #ifndef SHIBSP_LITE
@@ -251,6 +285,7 @@ bool SPConfig::init(const char* catalog_path, const char* inst_prefix)
         registerAttributeFilters();
         registerMatchFunctors();
     }
+    registerSecurityPolicyProviders();
 #endif
 
     if (isEnabled(Listener))
@@ -268,7 +303,7 @@ bool SPConfig::init(const char* catalog_path, const char* inst_prefix)
     if (isEnabled(OutOfProcess))
         m_artifactResolver = new ArtifactResolver();
 #endif
-    srand(static_cast<unsigned int>(std::time(NULL)));
+    srand(static_cast<unsigned int>(std::time(nullptr)));
 
     log.info("%s library initialization complete", PACKAGE_STRING);
     return true;
@@ -282,25 +317,30 @@ void SPConfig::term()
     Category& log=Category::getInstance(SHIBSP_LOGCAT".Config");
     log.info("%s library shutting down", PACKAGE_STRING);
 
-    setServiceProvider(NULL);
+    setServiceProvider(nullptr);
     if (m_configDoc)
         m_configDoc->release();
-    m_configDoc = NULL;
+    m_configDoc = nullptr;
 #ifndef SHIBSP_LITE
-    setArtifactResolver(NULL);
+    setArtifactResolver(nullptr);
 #endif
 
-    ArtifactResolutionServiceManager.deregisterFactories();
-    AssertionConsumerServiceManager.deregisterFactories();
-    LogoutInitiatorManager.deregisterFactories();
-    ManageNameIDServiceManager.deregisterFactories();
-    SessionInitiatorManager.deregisterFactories();
-    SingleLogoutServiceManager.deregisterFactories();
-    HandlerManager.deregisterFactories();
+    if (isEnabled(Handlers)) {
+        ArtifactResolutionServiceManager.deregisterFactories();
+        AssertionConsumerServiceManager.deregisterFactories();
+        LogoutInitiatorManager.deregisterFactories();
+        ManageNameIDServiceManager.deregisterFactories();
+        SessionInitiatorManager.deregisterFactories();
+        SingleLogoutServiceManager.deregisterFactories();
+        HandlerManager.deregisterFactories();
+        ProtocolProviderManager.deregisterFactories();
+    }
+
     ServiceProviderManager.deregisterFactories();
     Attribute::deregisterFactories();
 
 #ifndef SHIBSP_LITE
+    SecurityPolicyProviderManager.deregisterFactories();
     if (isEnabled(AttributeResolution)) {
         MatchFunctorManager.deregisterFactories();
         AttributeFilterManager.deregisterFactories();
@@ -364,7 +404,7 @@ bool SPConfig::instantiate(const char* config, bool rethrow)
             dummydoc = XMLToolingConfig::getConfig().getParser().parse(snippet);
             XercesJanitor<xercesc::DOMDocument> docjanitor(dummydoc);
             static const XMLCh _type[] = UNICODE_LITERAL_4(t,y,p,e);
-            auto_ptr_char type(dummydoc->getDocumentElement()->getAttributeNS(NULL,_type));
+            auto_ptr_char type(dummydoc->getDocumentElement()->getAttributeNS(nullptr,_type));
             if (type.get() && *type.get())
                 setServiceProvider(ServiceProviderManager.newPlugin(type.get(), dummydoc->getDocumentElement()));
             else

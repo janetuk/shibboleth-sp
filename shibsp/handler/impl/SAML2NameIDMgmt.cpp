@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@
 #ifndef SHIBSP_LITE
 # include "SessionCache.h"
 # include "security/SecurityPolicy.h"
+# include "security/SecurityPolicyProvider.h"
 # include "util/TemplateParameters.h"
 # include <fstream>
 # include <saml/exceptions.h>
@@ -45,6 +46,8 @@ using namespace opensaml::saml2;
 using namespace opensaml::saml2p;
 using namespace opensaml::saml2md;
 using namespace opensaml;
+#else
+# include "lite/SAMLConstants.h"
 #endif
 
 using namespace shibsp;
@@ -94,6 +97,9 @@ namespace shibsp {
             return "ManageNameIDService";
         }
 #endif
+        const XMLCh* getProtocolFamily() const {
+            return samlconstants::SAML20P_NS;
+        }
 
     private:
         pair<bool,long> doRequest(const Application& application, const HTTPRequest& httpRequest, HTTPResponse& httpResponse) const;
@@ -134,7 +140,7 @@ namespace shibsp {
 SAML2NameIDMgmt::SAML2NameIDMgmt(const DOMElement* e, const char* appId)
     : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".NameIDMgmt.SAML2"))
 #ifndef SHIBSP_LITE
-        ,m_role(samlconstants::SAML20MD_NS, IDPSSODescriptor::LOCAL_NAME), m_decoder(NULL), m_outgoing(NULL)
+        ,m_role(samlconstants::SAML20MD_NS, IDPSSODescriptor::LOCAL_NAME), m_decoder(nullptr), m_outgoing(nullptr)
 #endif
 {
 #ifndef SHIBSP_LITE
@@ -173,13 +179,13 @@ SAML2NameIDMgmt::SAML2NameIDMgmt(const DOMElement* e, const char* appId)
                     MessageEncoder * encoder = conf.MessageEncoderManager.newPlugin(
                         b.get(), pair<const DOMElement*,const XMLCh*>(e,shibspconstants::SHIB2SPCONFIG_NS)
                         );
-                    if (encoder->isUserAgentPresent()) {
+                    if (encoder->isUserAgentPresent() && XMLString::equals(getProtocolFamily(), encoder->getProtocolFamily())) {
                         m_encoders[start] = encoder;
                         m_log.debug("supporting outgoing binding (%s)", b.get());
                     }
                     else {
                         delete encoder;
-                        m_log.warn("skipping outgoing binding (%s), not a front-channel mechanism", b.get());
+                        m_log.warn("skipping outgoing binding (%s), not a SAML 2.0 front-channel mechanism", b.get());
                     }
                 }
                 catch (exception& ex) {
@@ -195,7 +201,7 @@ SAML2NameIDMgmt::SAML2NameIDMgmt(const DOMElement* e, const char* appId)
             MessageEncoder* encoder = conf.MessageEncoderManager.newPlugin(
                 getString("Binding").second, pair<const DOMElement*,const XMLCh*>(e,shibspconstants::SHIB2SPCONFIG_NS)
                 );
-            m_encoders.insert(pair<const XMLCh*,MessageEncoder*>(NULL, encoder));
+            m_encoders.insert(pair<const XMLCh*,MessageEncoder*>(nullptr, encoder));
         }
     }
 #endif
@@ -226,7 +232,7 @@ void SAML2NameIDMgmt::receive(DDF& in, ostream& out)
 {
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for NameID mgmt", aid ? aid : "(missing)");
@@ -237,7 +243,7 @@ void SAML2NameIDMgmt::receive(DDF& in, ostream& out)
     auto_ptr<HTTPRequest> req(getRequest(in));
 
     // Wrap a response shim.
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
     auto_ptr<HTTPResponse> resp(getResponse(ret));
 
@@ -260,22 +266,20 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
     if (!policyId.first)
         policyId = application.getString("policyId");   // unqualified in Application(s) element
 
-    // Access policy properties.
-    const PropertySet* settings = application.getServiceProvider().getPolicySettings(policyId.second);
-    pair<bool,bool> validate = settings->getBool("validate");
-
     // Lock metadata for use by policy.
     Locker metadataLocker(application.getMetadataProvider());
 
     // Create the policy.
-    shibsp::SecurityPolicy policy(application, &m_role, validate.first && validate.second);
+    auto_ptr<SecurityPolicy> policy(
+        application.getServiceProvider().getSecurityPolicyProvider()->createSecurityPolicy(application, &m_role, policyId.second)
+        );
 
     // Decode the message.
     string relayState;
-    auto_ptr<XMLObject> msg(m_decoder->decode(relayState, request, policy));
+    auto_ptr<XMLObject> msg(m_decoder->decode(relayState, request, *policy.get()));
     const ManageNameIDRequest* mgmtRequest = dynamic_cast<ManageNameIDRequest*>(msg.get());
     if (mgmtRequest) {
-        if (!policy.isAuthenticated())
+        if (!policy->isAuthenticated())
             throw SecurityPolicyException("Security of ManageNameIDRequest not established.");
 
         // Message from IdP to change or terminate a NameID.
@@ -288,14 +292,14 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
                 mgmtRequest->getID(),
                 StatusCode::REQUESTER, StatusCode::UNKNOWN_PRINCIPAL, "No active session found in request.",
                 relayState.c_str(),
-                policy.getIssuerMetadata(),
+                policy->getIssuerMetadata(),
                 application,
                 response,
                 true
                 );
         }
 
-        EntityDescriptor* entity = policy.getIssuerMetadata() ? dynamic_cast<EntityDescriptor*>(policy.getIssuerMetadata()->getParent()) : NULL;
+        EntityDescriptor* entity = policy->getIssuerMetadata() ? dynamic_cast<EntityDescriptor*>(policy->getIssuerMetadata()->getParent()) : nullptr;
 
         bool ownedName = false;
         NameID* nameid = mgmtRequest->getNameID();
@@ -309,10 +313,12 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
                 else {
                     Locker credlocker(cr);
                     auto_ptr<MetadataCredentialCriteria> mcc(
-                        policy.getIssuerMetadata() ? new MetadataCredentialCriteria(*policy.getIssuerMetadata()) : NULL
+                        policy->getIssuerMetadata() ? new MetadataCredentialCriteria(*policy->getIssuerMetadata()) : nullptr
                         );
                     try {
-                        auto_ptr<XMLObject> decryptedID(encname->decrypt(*cr,application.getRelyingParty(entity)->getXMLString("entityID").second,mcc.get()));
+                        auto_ptr<XMLObject> decryptedID(
+                            encname->decrypt(*cr,application.getRelyingParty(entity)->getXMLString("entityID").second,mcc.get())
+                            );
                         nameid = dynamic_cast<NameID*>(decryptedID.get());
                         if (nameid) {
                             ownedName = true;
@@ -332,24 +338,24 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
                 mgmtRequest->getID(),
                 StatusCode::REQUESTER, StatusCode::UNKNOWN_PRINCIPAL, "NameID not found in request.",
                 relayState.c_str(),
-                policy.getIssuerMetadata(),
+                policy->getIssuerMetadata(),
                 application,
                 response,
                 m_decoder->isUserAgentPresent()
                 );
         }
 
-        auto_ptr<NameID> namewrapper(ownedName ? nameid : NULL);
+        auto_ptr<NameID> namewrapper(ownedName ? nameid : nullptr);
 
         // For a front-channel request, we have to match the information in the request
         // against the current session.
         if (!session_id.empty()) {
-            if (!cache->matches(application, request, entity, *nameid, NULL)) {
+            if (!cache->matches(application, request, entity, *nameid, nullptr)) {
                 return sendResponse(
                     mgmtRequest->getID(),
                     StatusCode::REQUESTER, StatusCode::REQUEST_DENIED, "Active session did not match NameID mgmt request.",
                     relayState.c_str(),
-                    policy.getIssuerMetadata(),
+                    policy->getIssuerMetadata(),
                     application,
                     response,
                     true
@@ -360,7 +366,7 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
 
         // Determine what's happening...
         bool ownedNewID = false;
-        NewID* newid = NULL;
+        NewID* newid = nullptr;
         if (!mgmtRequest->getTerminate()) {
             // Better be a NewID in there.
             newid = mgmtRequest->getNewID();
@@ -374,10 +380,12 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
                     else {
                         Locker credlocker(cr);
                         auto_ptr<MetadataCredentialCriteria> mcc(
-                            policy.getIssuerMetadata() ? new MetadataCredentialCriteria(*policy.getIssuerMetadata()) : NULL
+                            policy->getIssuerMetadata() ? new MetadataCredentialCriteria(*policy->getIssuerMetadata()) : nullptr
                             );
                         try {
-                            auto_ptr<XMLObject> decryptedID(encnewid->decrypt(*cr,application.getRelyingParty(entity)->getXMLString("entityID").second,mcc.get()));
+                            auto_ptr<XMLObject> decryptedID(
+                                encnewid->decrypt(*cr,application.getRelyingParty(entity)->getXMLString("entityID").second,mcc.get())
+                                );
                             newid = dynamic_cast<NewID*>(decryptedID.get());
                             if (newid) {
                                 ownedNewID = true;
@@ -396,9 +404,9 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
                 m_log.error("NewID not found in request");
                 return sendResponse(
                     mgmtRequest->getID(),
-                    StatusCode::REQUESTER, NULL, "NewID not found in request.",
+                    StatusCode::REQUESTER, nullptr, "NewID not found in request.",
                     relayState.c_str(),
-                    policy.getIssuerMetadata(),
+                    policy->getIssuerMetadata(),
                     application,
                     response,
                     m_decoder->isUserAgentPresent()
@@ -406,7 +414,7 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
             }
         }
 
-        auto_ptr<NewID> newwrapper(ownedNewID ? newid : NULL);
+        auto_ptr<NewID> newwrapper(ownedNewID ? newid : nullptr);
 
         // TODO: maybe support in-place modification of sessions?
         /*
@@ -425,7 +433,7 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
             m_log.error("error while logging out matching sessions: %s", ex.what());
             return sendResponse(
                 logoutRequest->getID(),
-                StatusCode::RESPONDER, NULL, ex.what(),
+                StatusCode::RESPONDER, nullptr, ex.what(),
                 relayState.c_str(),
                 policy.getIssuerMetadata(),
                 application,
@@ -442,10 +450,10 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
         return sendResponse(
             mgmtRequest->getID(),
             worked ? StatusCode::SUCCESS : StatusCode::RESPONDER,
-            NULL,
-            NULL,
+            nullptr,
+            nullptr,
             relayState.c_str(),
-            policy.getIssuerMetadata(),
+            policy->getIssuerMetadata(),
             application,
             response,
             m_decoder->isUserAgentPresent()
@@ -470,8 +478,8 @@ pair<bool,long> SAML2NameIDMgmt::doRequest(
     */
 
     FatalProfileException ex("Incoming message was not a samlp:ManageNameIDRequest.");
-    if (policy.getIssuerMetadata())
-        annotateException(&ex, policy.getIssuerMetadata()); // throws it
+    if (policy->getIssuerMetadata())
+        annotateException(&ex, policy->getIssuerMetadata()); // throws it
     ex.raise();
     return make_pair(false,0L);  // never happen, satisfies compiler
 #else
@@ -494,8 +502,8 @@ pair<bool,long> SAML2NameIDMgmt::sendResponse(
     ) const
 {
     // Get endpoint and encoder to use.
-    const EndpointType* ep = NULL;
-    const MessageEncoder* encoder = NULL;
+    const EndpointType* ep = nullptr;
+    const MessageEncoder* encoder = nullptr;
     if (front) {
         const IDPSSODescriptor* idp = dynamic_cast<const IDPSSODescriptor*>(role);
         for (vector<const XMLCh*>::const_iterator b = m_bindings.begin(); idp && b!=m_bindings.end(); ++b) {

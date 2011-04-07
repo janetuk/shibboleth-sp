@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@
 
 #include <xercesc/util/XMLUniDefs.hpp>
 #include <xmltooling/security/SecurityHelper.h>
+#include <xmltooling/util/XMLHelper.h>
 
 using namespace shibsp;
 using namespace xmltooling;
@@ -55,6 +56,7 @@ namespace shibsp {
     SHIBSP_DLLLOCAL PluginManager<AttributeDecoder,xmltooling::QName,const DOMElement*>::Factory KeyInfoAttributeDecoderFactory;
     SHIBSP_DLLLOCAL PluginManager<AttributeDecoder,xmltooling::QName,const DOMElement*>::Factory DOMAttributeDecoderFactory;
     SHIBSP_DLLLOCAL PluginManager<AttributeDecoder,xmltooling::QName,const DOMElement*>::Factory XMLAttributeDecoderFactory;
+    SHIBSP_DLLLOCAL PluginManager<AttributeDecoder,xmltooling::QName,const DOMElement*>::Factory Base64AttributeDecoderFactory;
 
     static const XMLCh _StringAttributeDecoder[] = UNICODE_LITERAL_22(S,t,r,i,n,g,A,t,t,r,i,b,u,t,e,D,e,c,o,d,e,r);
     static const XMLCh _ScopedAttributeDecoder[] = UNICODE_LITERAL_22(S,c,o,p,e,d,A,t,t,r,i,b,u,t,e,D,e,c,o,d,e,r);
@@ -63,6 +65,11 @@ namespace shibsp {
     static const XMLCh _KeyInfoAttributeDecoder[] =UNICODE_LITERAL_23(K,e,y,I,n,f,o,A,t,t,r,i,b,u,t,e,D,e,c,o,d,e,r);
     static const XMLCh _DOMAttributeDecoder[] =    UNICODE_LITERAL_19(D,O,M,A,t,t,r,i,b,u,t,e,D,e,c,o,d,e,r);
     static const XMLCh _XMLAttributeDecoder[] =    UNICODE_LITERAL_19(X,M,L,A,t,t,r,i,b,u,t,e,D,e,c,o,d,e,r);
+    static const XMLCh _Base64AttributeDecoder[] = {
+        chLatin_B, chLatin_a, chLatin_s, chLatin_e, chDigit_6, chDigit_4,
+        chLatin_A, chLatin_t, chLatin_t, chLatin_r, chLatin_i, chLatin_b, chLatin_u, chLatin_t, chLatin_e,
+        chLatin_D, chLatin_e, chLatin_c, chLatin_o, chLatin_d, chLatin_e, chLatin_r, chNull
+    };
 
     static const XMLCh caseSensitive[] =           UNICODE_LITERAL_13(c,a,s,e,S,e,n,s,i,t,i,v,e);
     static const XMLCh hashAlg[] =                 UNICODE_LITERAL_7(h,a,s,h,A,l,g);
@@ -78,6 +85,7 @@ xmltooling::QName shibsp::NameIDFromScopedAttributeDecoderType(shibspconstants::
 xmltooling::QName shibsp::KeyInfoAttributeDecoderType(shibspconstants::SHIB2ATTRIBUTEMAP_NS, _KeyInfoAttributeDecoder);
 xmltooling::QName shibsp::DOMAttributeDecoderType(shibspconstants::SHIB2ATTRIBUTEMAP_NS, _DOMAttributeDecoder);
 xmltooling::QName shibsp::XMLAttributeDecoderType(shibspconstants::SHIB2ATTRIBUTEMAP_NS, _XMLAttributeDecoder);
+xmltooling::QName shibsp::Base64AttributeDecoderType(shibspconstants::SHIB2ATTRIBUTEMAP_NS, _Base64AttributeDecoder);
 
 void shibsp::registerAttributeDecoders()
 {
@@ -89,20 +97,14 @@ void shibsp::registerAttributeDecoders()
     conf.AttributeDecoderManager.registerFactory(KeyInfoAttributeDecoderType, KeyInfoAttributeDecoderFactory);
     conf.AttributeDecoderManager.registerFactory(DOMAttributeDecoderType, DOMAttributeDecoderFactory);
     conf.AttributeDecoderManager.registerFactory(XMLAttributeDecoderType, XMLAttributeDecoderFactory);
+    conf.AttributeDecoderManager.registerFactory(Base64AttributeDecoderType, Base64AttributeDecoderFactory);
 }
 
 AttributeDecoder::AttributeDecoder(const DOMElement *e)
-    : m_caseSensitive(true), m_internal(false), m_hashAlg(e ? e->getAttributeNS(NULL, hashAlg) : NULL)
+    : m_caseSensitive(XMLHelper::getAttrBool(e, true, caseSensitive)),
+        m_internal(XMLHelper::getAttrBool(e, false, internal)),
+        m_hashAlg(XMLHelper::getAttrString(e, nullptr, hashAlg))
 {
-    if (e) {
-        const XMLCh* flag = e->getAttributeNS(NULL, caseSensitive);
-        if (flag && (*flag == chLatin_f || *flag == chDigit_0))
-            m_caseSensitive = false;
-
-        flag = e->getAttributeNS(NULL, internal);
-        if (flag && (*flag == chLatin_t || *flag == chDigit_1))
-            m_internal = true;
-    }
 }
 
 AttributeDecoder::~AttributeDecoder()
@@ -115,7 +117,7 @@ Attribute* AttributeDecoder::_decode(Attribute* attr) const
         attr->setCaseSensitive(m_caseSensitive);
         attr->setInternal(m_internal);
 
-        if (m_hashAlg.get() && *m_hashAlg.get()) {
+        if (!m_hashAlg.empty()) {
             // We turn the values into strings using the supplied hash algorithm and return a SimpleAttribute instead.
             auto_ptr<SimpleAttribute> simple(new SimpleAttribute(attr->getAliases()));
             simple->setCaseSensitive(false);
@@ -123,12 +125,12 @@ Attribute* AttributeDecoder::_decode(Attribute* attr) const
             vector<string>& newdest = simple->getValues();
             const vector<string>& serialized = attr->getSerializedValues();
             for (vector<string>::const_iterator ser = serialized.begin(); ser != serialized.end(); ++ser) {
-                newdest.push_back(SecurityHelper::doHash(m_hashAlg.get(), ser->data(), ser->length()));
+                newdest.push_back(SecurityHelper::doHash(m_hashAlg.c_str(), ser->data(), ser->length()));
                 if (newdest.back().empty())
                     newdest.pop_back();
             }
             delete attr;
-            return newdest.empty() ? NULL : simple.release();
+            return newdest.empty() ? nullptr : simple.release();
         }
 
     }
@@ -240,7 +242,7 @@ const char* Attribute::getString(size_t index) const
 
 const char* Attribute::getScope(size_t index) const
 {
-    return NULL;
+    return nullptr;
 }
 
 void Attribute::removeValue(size_t index)
@@ -251,7 +253,7 @@ void Attribute::removeValue(size_t index)
 
 DDF Attribute::marshall() const
 {
-    DDF ddf(NULL);
+    DDF ddf(nullptr);
     ddf.structure().addmember(m_id.front().c_str()).list();
     if (!m_caseSensitive)
         ddf.addmember("case_insensitive");
@@ -261,7 +263,7 @@ DDF Attribute::marshall() const
         DDF alias;
         DDF aliases = ddf.addmember("aliases").list();
         for (std::vector<std::string>::const_iterator a = m_id.begin() + 1; a != m_id.end(); ++a) {
-            alias = DDF(NULL).string(a->c_str());
+            alias = DDF(nullptr).string(a->c_str());
             aliases.add(alias);
         }
     }

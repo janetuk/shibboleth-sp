@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2007 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@
 #include "internal.h"
 #include "exceptions.h"
 #include "handler/AbstractHandler.h"
-#include "handler/LogoutHandler.h"
+#include "handler/LogoutInitiator.h"
 #include "util/SPConstants.h"
 
 #include <xercesc/util/XMLUniDefs.hpp>
@@ -40,7 +40,7 @@ namespace shibsp {
     #pragma warning( disable : 4250 )
 #endif
 
-    class SHIBSP_DLLLOCAL ChainingLogoutInitiator : public AbstractHandler, public LogoutHandler
+    class SHIBSP_DLLLOCAL ChainingLogoutInitiator : public AbstractHandler, public LogoutInitiator
     {
     public:
         ChainingLogoutInitiator(const DOMElement* e, const char* appId);
@@ -51,10 +51,6 @@ namespace shibsp {
         pair<bool,long> run(SPRequest& request, bool isHandler=true) const;
 
 #ifndef SHIBSP_LITE
-        const char* getType() const {
-            return "LogoutInitiator";
-        }
-
         void generateMetadata(opensaml::saml2md::SPSSODescriptor& role, const char* handlerURL) const {
             for (vector<Handler*>::const_iterator i = m_handlers.begin(); i!=m_handlers.end(); ++i)
                 (*i)->generateMetadata(role, handlerURL);
@@ -101,12 +97,12 @@ ChainingLogoutInitiator::ChainingLogoutInitiator(const DOMElement* e, const char
     SPConfig& conf = SPConfig::getConfig();
 
     // Load up the chain of handlers.
-    e = e ? XMLHelper::getFirstChildElement(e, _LogoutInitiator) : NULL;
+    e = XMLHelper::getFirstChildElement(e, _LogoutInitiator);
     while (e) {
-        auto_ptr_char type(e->getAttributeNS(NULL,_type));
-        if (type.get() && *(type.get())) {
+        string t(XMLHelper::getAttrString(e, nullptr, _type));
+        if (!t.empty()) {
             try {
-                m_handlers.push_back(conf.LogoutInitiatorManager.newPlugin(type.get(),make_pair(e, appId)));
+                m_handlers.push_back(conf.LogoutInitiatorManager.newPlugin(t.c_str(), make_pair(e, appId)));
                 m_handlers.back()->setParent(this);
             }
             catch (exception& ex) {

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2011 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ namespace shibsp {
     {
     public:
         WAYFSessionInitiator(const DOMElement* e, const char* appId)
-                : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionInitiator.WAYF"), NULL, &m_remapper), m_url(NULL) {
+                : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionInitiator.WAYF"), nullptr, &m_remapper), m_url(nullptr) {
             pair<bool,const char*> url = getString("URL");
             if (!url.first)
                 throw ConfigurationException("WAYF SessionInitiator requires a URL property.");
@@ -62,6 +62,10 @@ namespace shibsp {
         virtual ~WAYFSessionInitiator() {}
         
         pair<bool,long> run(SPRequest& request, string& entityID, bool isHandler=true) const;
+
+        const XMLCh* getProtocolFamily() const {
+            return samlconstants::SAML11_PROTOCOL_ENUM;
+        }
 
     private:
         const char* m_url;
@@ -82,93 +86,93 @@ pair<bool,long> WAYFSessionInitiator::run(SPRequest& request, string& entityID, 
 {
     // The IdP CANNOT be specified for us to run. Otherwise, we'd be redirecting to a WAYF
     // anytime the IdP's metadata was wrong.
-    if (!entityID.empty())
+    if (!entityID.empty() || !checkCompatibility(request, isHandler))
         return make_pair(false,0L);
 
     string target;
-    string postData;
-    const char* option;
-    const Handler* ACS=NULL;
+    pair<bool,const char*> prop;
+    const Handler* ACS=nullptr;
     const Application& app=request.getApplication();
     pair<bool,const char*> discoveryURL = pair<bool,const char*>(true, m_url);
 
     if (isHandler) {
-        option=request.getParameter("acsIndex");
-        if (option) {
-            ACS=app.getAssertionConsumerServiceByIndex(atoi(option));
+        prop.second = request.getParameter("acsIndex");
+        if (prop.second && *prop.second) {
+            ACS = app.getAssertionConsumerServiceByIndex(atoi(prop.second));
             if (!ACS)
                 request.log(SPRequest::SPWarn, "invalid acsIndex specified in request, using acsIndex property");
         }
 
-        option = request.getParameter("target");
-        if (option)
-            target = option;
-        recoverRelayState(request.getApplication(), request, request, target, false);
+        prop = getString("target", request);
+        if (prop.first)
+            target = prop.second;
 
-        option = request.getParameter("discoveryURL");
-        if (option)
-            discoveryURL.second = option;
+        // Since we're passing the ACS by value, we need to compute the return URL,
+        // so we'll need the target resource for real.
+        recoverRelayState(request.getApplication(), request, request, target, false);
+        limitRelayState(m_log, request.getApplication(), request, target.c_str());
+
+        prop.second = request.getParameter("discoveryURL");
+        if (prop.second && *prop.second)
+            discoveryURL.second = prop.second;
     }
     else {
-        // We're running as a "virtual handler" from within the filter.
-        // The target resource is the current one and everything else is defaulted.
-        target=request.getRequestURL();
+        // Check for a hardwired target value in the map or handler.
+        prop = getString("target", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
+        if (prop.first)
+            target = prop.second;
+        else
+            target = request.getRequestURL();
+
         discoveryURL = request.getRequestSettings().first->getString("discoveryURL");
     }
     
-    // Since we're not passing by index, we need to fully compute the return URL.
     if (!ACS) {
-        pair<bool,unsigned int> index = getUnsignedInt("acsIndex");
-        if (index.first) {
+        // Try fixed index property.
+        pair<bool,unsigned int> index = getUnsignedInt("acsIndex", request, HANDLER_PROPERTY_MAP|HANDLER_PROPERTY_FIXED);
+        if (index.first)
             ACS = app.getAssertionConsumerServiceByIndex(index.second);
-            if (!ACS)
-                request.log(SPRequest::SPWarn, "invalid acsIndex property, using default ACS location");
-        }
-        if (!ACS)
-            ACS = app.getDefaultAssertionConsumerService();
     }
 
-    // Validate the ACS for use with this protocol.
-    pair<bool,const char*> ACSbinding = ACS ? ACS->getString("Binding") : pair<bool,const char*>(false,NULL);
-    if (ACSbinding.first) {
-        pair<bool,const char*> compatibleBindings = getString("compatibleBindings");
-        if (compatibleBindings.first && strstr(compatibleBindings.second, ACSbinding.second) == NULL) {
-            m_log.error("configured or requested ACS has non-SAML 1.x binding");
-            throw ConfigurationException("Configured or requested ACS has non-SAML 1.x binding ($1).", params(1, ACSbinding.second));
-        }
-        else if (strcmp(ACSbinding.second, samlconstants::SAML1_PROFILE_BROWSER_POST) &&
-                 strcmp(ACSbinding.second, samlconstants::SAML1_PROFILE_BROWSER_ARTIFACT)) {
-            m_log.error("configured or requested ACS has non-SAML 1.x binding");
-            throw ConfigurationException("Configured or requested ACS has non-SAML 1.x binding ($1).", params(1, ACSbinding.second));
-        }
+    // If we picked by index, validate the ACS for use with this protocol.
+    if (!ACS || !XMLString::equals(samlconstants::SAML11_PROTOCOL_ENUM, ACS->getProtocolFamily())) {
+        if (ACS)
+            request.log(SPRequest::SPWarn, "invalid acsIndex property, or non-SAML 1.x ACS, using default SAML 1.x ACS");
+        ACS = app.getAssertionConsumerServiceByProtocol(getProtocolFamily());
+        if (!ACS)
+            throw ConfigurationException("Unable to locate a SAML 1.x ACS endpoint to use for response.");
     }
 
     if (!discoveryURL.first)
         discoveryURL.second = m_url;
     m_log.debug("sending request to WAYF (%s)", discoveryURL.second);
 
+    // Since we're not passing by index, we need to fully compute the return URL.
     // Compute the ACS URL. We add the ACS location to the base handlerURL.
-    string ACSloc=request.getHandlerURL(target.c_str());
-    pair<bool,const char*> loc=ACS ? ACS->getString("Location") : pair<bool,const char*>(false,NULL);
-    if (loc.first) ACSloc+=loc.second;
+    string ACSloc = request.getHandlerURL(target.c_str());
+    prop = ACS->getString("Location");
+    if (prop.first)
+        ACSloc += prop.second;
 
     if (isHandler) {
         // We may already have RelayState set if we looped back here,
-        // but just in case target is a resource, we reset it back.
-        option = request.getParameter("target");
-        if (option)
-            target = option;
+        // but we've turned it back into a resource by this point, so if there's
+        // a target on the URL, reset to that value.
+        prop.second = request.getParameter("target");
+        if (prop.second && *prop.second)
+            target = prop.second;
     }
-    preserveRelayState(request.getApplication(), request, target);
+
+    preserveRelayState(app, request, target);
     if (!isHandler)
-        preservePostData(request.getApplication(), request, request, target.c_str());
+        preservePostData(app, request, request, target.c_str());
 
     // WAYF requires a target value.
     if (target.empty())
         target = "default";
 
     char timebuf[16];
-    sprintf(timebuf,"%lu",time(NULL));
+    sprintf(timebuf,"%lu",time(nullptr));
     const URLEncoder* urlenc = XMLToolingConfig::getConfig().getURLEncoder();
     string req=string(discoveryURL.second) + (strchr(discoveryURL.second,'?') ? '&' : '?') + "shire=" + urlenc->encode(ACSloc.c_str()) +
         "&time=" + timebuf + "&target=" + urlenc->encode(target.c_str()) +

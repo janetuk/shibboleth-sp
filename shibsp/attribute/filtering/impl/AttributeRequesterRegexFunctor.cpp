@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,12 +42,12 @@ namespace shibsp {
     {
         RegularExpression* m_regex;
     public:
-        AttributeRequesterRegexFunctor(const DOMElement* e) {
-            const XMLCh* r = e ? e->getAttributeNS(NULL,regex) : NULL;
+        AttributeRequesterRegexFunctor(const DOMElement* e) : m_regex(nullptr) {
+            const XMLCh* r = e ? e->getAttributeNS(nullptr,regex) : nullptr;
             if (!r || !*r)
                 throw ConfigurationException("AttributeRequesterRegex MatchFunctor requires non-empty regex attribute.");
             try {
-                m_regex = new RegularExpression(r, e->getAttributeNS(NULL,options));
+                m_regex = new RegularExpression(r, e->getAttributeNS(nullptr,options));
             }
             catch (XMLException& ex) {
                 xmltooling::auto_ptr_char temp(ex.getMessage());

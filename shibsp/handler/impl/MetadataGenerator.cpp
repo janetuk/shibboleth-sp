@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@
 #include "handler/RemotedHandler.h"
 
 #ifndef SHIBSP_LITE
+# include "attribute/resolver/AttributeExtractor.h"
 # include "metadata/MetadataProviderCriteria.h"
 # include <saml/exceptions.h>
 # include <saml/SAMLConfig.h>
@@ -38,6 +39,7 @@
 # include <xmltooling/XMLToolingConfig.h>
 # include <xmltooling/security/Credential.h>
 # include <xmltooling/security/CredentialCriteria.h>
+# include <xmltooling/security/SecurityHelper.h>
 # include <xmltooling/signature/Signature.h>
 # include <xmltooling/util/ParserPool.h>
 # include <xmltooling/util/PathResolver.h>
@@ -81,7 +83,17 @@ namespace shibsp {
     {
     public:
         MetadataGenerator(const DOMElement* e, const char* appId);
-        virtual ~MetadataGenerator() {}
+        virtual ~MetadataGenerator() {
+#ifndef SHIBSP_LITE
+            delete m_uiinfo;
+            delete m_org;
+            delete m_entityAttrs;
+            for_each(m_contacts.begin(), m_contacts.end(), xmltooling::cleanup<ContactPerson>());
+            for_each(m_formats.begin(), m_formats.end(), xmltooling::cleanup<NameIDFormat>());
+            for_each(m_reqAttrs.begin(), m_reqAttrs.end(), xmltooling::cleanup<RequestedAttribute>());
+            for_each(m_attrConsumers.begin(), m_attrConsumers.end(), xmltooling::cleanup<AttributeConsumingService>());
+#endif
+        }
 
         pair<bool,long> run(SPRequest& request, bool isHandler=true) const;
         void receive(DDF& in, ostream& out);
@@ -96,8 +108,16 @@ namespace shibsp {
 
         set<string> m_acl;
 #ifndef SHIBSP_LITE
+        string m_salt;
         short m_http,m_https;
         vector<string> m_bases;
+        UIInfo* m_uiinfo;
+        Organization* m_org;
+        EntityAttributes* m_entityAttrs;
+        vector<ContactPerson*> m_contacts;
+        vector<NameIDFormat*> m_formats;
+        vector<RequestedAttribute*> m_reqAttrs;
+        vector<AttributeConsumingService*> m_attrConsumers;
 #endif
     };
 
@@ -115,7 +135,7 @@ namespace shibsp {
 MetadataGenerator::MetadataGenerator(const DOMElement* e, const char* appId)
     : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".MetadataGenerator"), &g_Blocker)
 #ifndef SHIBSP_LITE
-        ,m_http(0), m_https(0)
+        ,m_http(0), m_https(0), m_uiinfo(nullptr), m_org(nullptr), m_entityAttrs(nullptr)
 #endif
 {
     string address(appId);
@@ -139,6 +159,10 @@ MetadataGenerator::MetadataGenerator(const DOMElement* e, const char* appId)
 #ifndef SHIBSP_LITE
     static XMLCh EndpointBase[] = UNICODE_LITERAL_12(E,n,d,p,o,i,n,t,B,a,s,e);
 
+    pair<bool,const char*> salt = getString("salt");
+    if (salt.first)
+        m_salt = salt.second;
+
     pair<bool,bool> flag = getBool("http");
     if (flag.first)
         m_http = flag.second ? 1 : -1;
@@ -146,14 +170,80 @@ MetadataGenerator::MetadataGenerator(const DOMElement* e, const char* appId)
     if (flag.first)
         m_https = flag.second ? 1 : -1;
 
-    e = XMLHelper::getFirstChildElement(e, EndpointBase);
+    e = XMLHelper::getFirstChildElement(e);
     while (e) {
-        if (e->hasChildNodes()) {
+        if (XMLString::equals(e->getLocalName(), EndpointBase) && e->hasChildNodes()) {
             auto_ptr_char base(e->getFirstChild()->getNodeValue());
             if (base.get() && *base.get())
                 m_bases.push_back(base.get());
         }
-        e = XMLHelper::getNextSiblingElement(e, EndpointBase);
+        else {
+            // Try and parse the object.
+            auto_ptr<XMLObject> child(XMLObjectBuilder::buildOneFromElement(const_cast<DOMElement*>(e)));
+            ContactPerson* cp = dynamic_cast<ContactPerson*>(child.get());
+            if (cp) {
+                child.release();
+                m_contacts.push_back(cp);
+            }
+            else {
+                NameIDFormat* nif = dynamic_cast<NameIDFormat*>(child.get());
+                if (nif) {
+                    child.release();
+                    m_formats.push_back(nif);
+                }
+                else {
+                    RequestedAttribute* req = dynamic_cast<RequestedAttribute*>(child.get());
+                    if (req) {
+                        child.release();
+                        m_reqAttrs.push_back(req);
+                    }
+                    else {
+                        AttributeConsumingService* acs = dynamic_cast<AttributeConsumingService*>(child.get());
+                        if (acs) {
+                            child.release();
+                            m_attrConsumers.push_back(acs);
+                        }
+                        else {
+                            UIInfo* info = dynamic_cast<UIInfo*>(child.get());
+                            if (info) {
+                                if (!m_uiinfo) {
+                                    child.release();
+                                    m_uiinfo = info;
+                                }
+                                else {
+                                    m_log.warn("skipping duplicate UIInfo element");
+                                }
+                            }
+                            else {
+                                Organization* org = dynamic_cast<Organization*>(child.get());
+                                if (org) {
+                                    if (!m_org) {
+                                        child.release();
+                                        m_org = org;
+                                    }
+                                    else {
+                                        m_log.warn("skipping duplicate Organization element");
+                                    }
+                                }
+                                else {
+                                    EntityAttributes* ea = dynamic_cast<EntityAttributes*>(child.get());
+                                    if (ea) {
+                                        if (!m_entityAttrs) {
+                                            child.release();
+                                            m_entityAttrs = ea;
+                                        }
+                                        else {
+                                            m_log.warn("skipping duplicate EntityAttributes element");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        e = XMLHelper::getNextSiblingElement(e);
     }
 #endif
 }
@@ -199,7 +289,7 @@ void MetadataGenerator::receive(DDF& in, ostream& out)
     // Find application.
     const char* aid=in["application_id"].string();
     const char* hurl=in["handler_url"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for metadata request", aid ? aid : "(missing)");
@@ -210,7 +300,7 @@ void MetadataGenerator::receive(DDF& in, ostream& out)
     }
 
     // Wrap a response shim.
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
     auto_ptr<HTTPResponse> resp(getResponse(ret));
 
@@ -228,7 +318,7 @@ pair<bool,long> MetadataGenerator::processMessage(
 #ifndef SHIBSP_LITE
     m_log.debug("processing metadata request");
 
-    const PropertySet* relyingParty=NULL;
+    const PropertySet* relyingParty=nullptr;
     if (entityID) {
         MetadataProvider* m=application.getMetadataProvider();
         Locker locker(m);
@@ -261,20 +351,34 @@ pair<bool,long> MetadataGenerator::processMessage(
         entity = EntityDescriptorBuilder::buildEntityDescriptor();
     }
 
-    if (!entity->getID())
-        entity->setID(SAMLConfig::getConfig().generateIdentifier());
+    if (!entity->getID()) {
+        string hashinput = m_salt + relyingParty->getString("entityID").second;
+        string hashed = '_' + SecurityHelper::doHash("SHA1", hashinput.c_str(), hashinput.length());
+        auto_ptr_XMLCh widenit(hashed.c_str());
+        entity->setID(widenit.get());
+    }
 
     auto_ptr<EntityDescriptor> wrapper(entity);
     pair<bool,unsigned int> cache = getUnsignedInt("cacheDuration");
     if (cache.first) {
         entity->setCacheDuration(cache.second);
     }
-    else {
-        cache = getUnsignedInt("validUntil");
-        if (cache.first)
-            entity->setValidUntil(time(NULL) + cache.second);
-    }
+    cache = getUnsignedInt("validUntil");
+    if (cache.first)
+        entity->setValidUntil(time(nullptr) + cache.second);
     entity->setEntityID(relyingParty->getXMLString("entityID").second);
+
+    if (m_org && !entity->getOrganization())
+        entity->setOrganization(m_org->cloneOrganization());
+
+    for (vector<ContactPerson*>::const_iterator cp = m_contacts.begin(); cp != m_contacts.end(); ++cp)
+        entity->getContactPersons().push_back((*cp)->cloneContactPerson());
+
+    if (m_entityAttrs) {
+        if (!entity->getExtensions())
+            entity->setExtensions(ExtensionsBuilder::buildExtensions());
+        entity->getExtensions()->getUnknownXMLObjects().push_back(m_entityAttrs->cloneEntityAttributes());
+    }
 
     SPSSODescriptor* role;
     if (entity->getSPSSODescriptors().empty()) {
@@ -283,6 +387,38 @@ pair<bool,long> MetadataGenerator::processMessage(
     }
     else {
         role = entity->getSPSSODescriptors().front();
+    }
+
+    for (vector<NameIDFormat*>::const_iterator nif = m_formats.begin(); nif != m_formats.end(); ++nif)
+        role->getNameIDFormats().push_back((*nif)->cloneNameIDFormat());
+
+    if (m_uiinfo) {
+        if (!role->getExtensions())
+            role->setExtensions(ExtensionsBuilder::buildExtensions());
+        role->getExtensions()->getUnknownXMLObjects().push_back(m_uiinfo->cloneUIInfo());
+    }
+
+    for (vector<AttributeConsumingService*>::const_iterator acs = m_attrConsumers.begin(); acs != m_attrConsumers.end(); ++acs)
+        role->getAttributeConsumingServices().push_back((*acs)->cloneAttributeConsumingService());
+
+    if (!m_reqAttrs.empty()) {
+        int index = 1;
+        const vector<AttributeConsumingService*>& svcs = const_cast<const SPSSODescriptor*>(role)->getAttributeConsumingServices();
+        for (vector<AttributeConsumingService*>::const_iterator s =svcs.begin(); s != svcs.end(); ++s) {
+            pair<bool,int> i = (*s)->getIndex();
+            if (i.first && index == i.second)
+                index = i.second + 1;
+        }
+        AttributeConsumingService* svc = AttributeConsumingServiceBuilder::buildAttributeConsumingService();
+        role->getAttributeConsumingServices().push_back(svc);
+        svc->setIndex(index);
+        ServiceName* sn = ServiceNameBuilder::buildServiceName();
+        svc->getServiceNames().push_back(sn);
+        sn->setName(entity->getEntityID());
+        static const XMLCh english[] = UNICODE_LITERAL_2(e,n);
+        sn->setLang(english);
+        for (vector<RequestedAttribute*>::const_iterator req = m_reqAttrs.begin(); req != m_reqAttrs.end(); ++req)
+            svc->getRequestedAttributes().push_back((*req)->cloneRequestedAttribute());
     }
 
     // Policy flags.
@@ -323,6 +459,12 @@ pair<bool,long> MetadataGenerator::processMessage(
         }
     }
 
+    AttributeExtractor* extractor = application.getAttributeExtractor();
+    if (extractor) {
+        Locker extlocker(extractor);
+        extractor->generateMetadata(*role);
+    }
+
     CredentialResolver* credResolver=application.getCredentialResolver();
     if (credResolver) {
         Locker credLocker(credResolver);
@@ -330,23 +472,31 @@ pair<bool,long> MetadataGenerator::processMessage(
         prop = relyingParty->getString("keyName");
         if (prop.first)
             cc.getKeyNames().insert(prop.second);
+        vector<const Credential*> signingcreds,enccreds;
         cc.setUsage(Credential::SIGNING_CREDENTIAL);
-        vector<const Credential*> creds;
-        credResolver->resolve(creds,&cc);
-        for (vector<const Credential*>::const_iterator c = creds.begin(); c != creds.end(); ++c) {
+        credResolver->resolve(signingcreds, &cc);
+        cc.setUsage(Credential::ENCRYPTION_CREDENTIAL);
+        credResolver->resolve(enccreds, &cc);
+
+        for (vector<const Credential*>::const_iterator c = signingcreds.begin(); c != signingcreds.end(); ++c) {
             KeyInfo* kinfo = (*c)->getKeyInfo();
             if (kinfo) {
                 KeyDescriptor* kd = KeyDescriptorBuilder::buildKeyDescriptor();
-                kd->setUse(KeyDescriptor::KEYTYPE_SIGNING);
                 kd->setKeyInfo(kinfo);
+                const XMLCh* use = KeyDescriptor::KEYTYPE_SIGNING;
+                for (vector<const Credential*>::iterator match = enccreds.begin(); match != enccreds.end(); ++match) {
+                    if (*match == *c) {
+                        use = nullptr;
+                        enccreds.erase(match);
+                        break;
+                    }
+                }
+                kd->setUse(use);
                 role->getKeyDescriptors().push_back(kd);
             }
         }
 
-        cc.setUsage(Credential::ENCRYPTION_CREDENTIAL);
-        creds.clear();
-        credResolver->resolve(creds,&cc);
-        for (vector<const Credential*>::const_iterator c = creds.begin(); c != creds.end(); ++c) {
+        for (vector<const Credential*>::const_iterator c = enccreds.begin(); c != enccreds.end(); ++c) {
             KeyInfo* kinfo = (*c)->getKeyInfo();
             if (kinfo) {
                 KeyDescriptor* kd = KeyDescriptorBuilder::buildKeyDescriptor();
