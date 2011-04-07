@@ -1,0 +1,10 @@
+Subject: Collected Debian patches for shibboleth-sp2
+Author: Russ Allbery <rra@debian.org>
+
+The packaging for shibboleth-sp2 is maintained in Git using multiple
+branches for fixes, which makes it complex to separate the changes
+into individual patches.  They are therefore all included in a single
+Debian patch.
+
+For full commit history and separated commits, see the packaging Git
+repository.
