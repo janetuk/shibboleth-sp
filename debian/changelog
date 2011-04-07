@@ -8,6 +8,30 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
 
   [ Russ Allbery ]
   * New upstream release.
+    - Move <SecurityPolicies> default to a separate configuration file
+    - Allow hard-coding the return URL after authentication
+    - Allow restrictions on signing/digest algorithms to accept
+    - New -o, -u, and -g flags to keygen
+    - Add SessionIndex of an AuthnStatement to environment variables
+    - Support for metadata extensions for algorithm support
+    - New extension for decoding base64 encoded attributes
+    - Allow configuration of XMLAccessControl rules in .htaccess
+    - Support explicit filtering of NameID by qualifiers
+    - New simplified configuration mechanism
+    - Allow inheritance of RelyingParty definitions in ApplicationOverride
+    - Provide more information in the status handler
+    - New endpoint producing JSON data for Discovery Service
+    - Generate the EntityDescriptor/ID via hashing for stability
+    - Allow using a regex to generate a URL from the entityID in dynamic
+      metadata plugin
+    - Support for multibyte request paths
+    - New session cache option to avoid storing complete assertions
+    - Support MDX-style artifact lookup in dynamic MD plugin
+    - Allow storing and retrieving the session key from an HTTP header
+    - Support "unspecified" NameFormat without special configuration
+    - Allow overriding listener details to permit use of a shared config
+    - Add error information to attribute ResolutionContext
+    - Multiple bug fixes
 
  -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
 
