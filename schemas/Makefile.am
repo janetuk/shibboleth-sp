@@ -1,18 +1,19 @@
-## $Id: Makefile.am 3168 2009-10-31 20:34:11Z cantor $ 
+## $Id: Makefile.am 3293 2010-08-13 04:23:23Z cantor $ 
 
 AUTOMAKE_OPTIONS = foreign
 
-pkgxmldir = $(datadir)/xml/@PACKAGE@
+pkgxmldir = $(datadir)/xml/@PACKAGE_NAME@
 
 schemafiles = \
     shibboleth.xsd \
     shibboleth-metadata-1.0.xsd \
     shibboleth-2.0-native-sp-config.xsd \
+    shibboleth-2.0-native-sp-protocols.xsd \
+    shibboleth-2.0-sp-notify.xsd \
     shibboleth-2.0-afp.xsd \
     shibboleth-2.0-afp-mf-basic.xsd \
     shibboleth-2.0-afp-mf-saml.xsd \
     shibboleth-2.0-attribute-map.xsd \
-    shibboleth-2.0-sp-notify.xsd \
     WS-Trust.xsd
 
 pkgxml_DATA = \

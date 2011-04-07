@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,16 +56,18 @@ namespace shibsp {
         )
     {
         // The properties we need can be set in the RequestMap, or the Errors element.
-        bool mderror = dynamic_cast<const opensaml::saml2md::MetadataException*>(tp.getRichException())!=NULL;
-        pair<bool,const char*> redirectErrors = pair<bool,const char*>(false,NULL);
-        pair<bool,const char*> pathname = pair<bool,const char*>(false,NULL);
+        bool mderror = dynamic_cast<const opensaml::saml2md::MetadataException*>(tp.getRichException())!=nullptr;
+        bool accesserror = (strcmp(page, "access")==0);
+        pair<bool,const char*> redirectErrors = pair<bool,const char*>(false,nullptr);
+        pair<bool,const char*> pathname = pair<bool,const char*>(false,nullptr);
 
-        // Strictly for error handling, detect a NULL application and point at the default.
+        // Strictly for error handling, detect a nullptr application and point at the default.
         if (!app)
-            app = request.getServiceProvider().getApplication("default");
+            app = request.getServiceProvider().getApplication(nullptr);
 
         const PropertySet* props=app->getPropertySet("Errors");
 
+        // First look for settings in the request map of the form pageError.
         try {
             RequestMapper::Settings settings = request.getRequestSettings();
             if (mderror)
@@ -82,8 +84,8 @@ namespace shibsp {
             log.error(ex.what());
         }
 
+        // Check for redirection on errors instead of template.
         if (mayRedirect) {
-            // Check for redirection on errors instead of template.
             if (!redirectErrors.first && props)
                 redirectErrors = props->getString("redirectErrors");
             if (redirectErrors.first) {
@@ -97,6 +99,7 @@ namespace shibsp {
         request.setResponseHeader("Expires","01-Jan-1997 12:00:00 GMT");
         request.setResponseHeader("Cache-Control","private,no-store,no-cache");
 
+        // Nothing in the request map, so check for a property named "page" in the Errors property set.
         if (!pathname.first && props) {
             if (mderror)
                 pathname=props->getString("metadata");
@@ -104,24 +107,31 @@ namespace shibsp {
                 pathname=props->getString(page);
         }
 
+        // If there's still no template to use, just use pageError.html unless it's an access issue.
         string fname;
         if (!pathname.first) {
-            fname = string(page) + "Error.html";
-            pathname.second = fname.c_str();
+            if (!accesserror) {
+                fname = string(page) + "Error.html";
+                pathname.second = fname.c_str();
+            }
         }
         else {
             fname = pathname.second;
         }
 
-        ifstream infile(XMLToolingConfig::getConfig().getPathResolver()->resolve(fname, PathResolver::XMLTOOLING_CFG_FILE).c_str());
-        if (infile) {
-            tp.setPropertySet(props);
-            stringstream str;
-            XMLToolingConfig::getConfig().getTemplateEngine()->run(infile, str, tp, tp.getRichException());
-            return request.sendError(str);
+        // If we have a template to use, use it.
+        if (!fname.empty()) {
+            ifstream infile(XMLToolingConfig::getConfig().getPathResolver()->resolve(fname, PathResolver::XMLTOOLING_CFG_FILE).c_str());
+            if (infile) {
+                tp.setPropertySet(props);
+                stringstream str;
+                XMLToolingConfig::getConfig().getTemplateEngine()->run(infile, str, tp, tp.getRichException());
+                return request.sendError(str);
+            }
         }
 
-        if (!strcmp(page, "access")) {
+        // If we got here, then either it's an access error or a template failed.
+        if (accesserror) {
             istringstream msg("Access Denied");
             return request.sendResponse(msg, HTTPResponse::XMLTOOLING_HTTP_STATUS_FORBIDDEN);
         }
@@ -134,6 +144,7 @@ namespace shibsp {
     void SHIBSP_DLLLOCAL clearHeaders(SPRequest& request) {
         const Application& app = request.getApplication();
         app.clearHeader(request, "Shib-Session-ID", "HTTP_SHIB_SESSION_ID");
+        app.clearHeader(request, "Shib-Session-Index", "HTTP_SHIB_SESSION_INDEX");
         app.clearHeader(request, "Shib-Identity-Provider", "HTTP_SHIB_IDENTITY_PROVIDER");
         app.clearHeader(request, "Shib-Authentication-Method", "HTTP_SHIB_AUTHENTICATION_METHOD");
         app.clearHeader(request, "Shib-Authentication-Instant", "HTTP_SHIB_AUTHENTICATION_INSTANT");
@@ -152,10 +163,51 @@ void SHIBSP_API shibsp::registerServiceProviders()
 
 ServiceProvider::ServiceProvider()
 {
+    m_authTypes.insert("shibboleth");
 }
 
 ServiceProvider::~ServiceProvider()
 {
+}
+
+#ifndef SHIBSP_LITE
+SecurityPolicyProvider* ServiceProvider::getSecurityPolicyProvider(bool required) const
+{
+    if (required)
+        throw ConfigurationException("No SecurityPolicyProvider available.");
+    return nullptr;
+}
+#endif
+
+Remoted* ServiceProvider::regListener(const char* address, Remoted* listener)
+{
+    Remoted* ret=nullptr;
+    map<string,Remoted*>::const_iterator i=m_listenerMap.find(address);
+    if (i!=m_listenerMap.end())
+        ret=i->second;
+    m_listenerMap[address]=listener;
+    Category::getInstance(SHIBSP_LOGCAT".ServiceProvider").info("registered remoted message endpoint (%s)",address);
+    return ret;
+}
+
+bool ServiceProvider::unregListener(const char* address, Remoted* current, Remoted* restore)
+{
+    map<string,Remoted*>::const_iterator i=m_listenerMap.find(address);
+    if (i!=m_listenerMap.end() && i->second==current) {
+        if (restore)
+            m_listenerMap[address]=restore;
+        else
+            m_listenerMap.erase(address);
+        Category::getInstance(SHIBSP_LOGCAT".ServiceProvider").info("unregistered remoted message endpoint (%s)",address);
+        return true;
+    }
+    return false;
+}
+
+Remoted* ServiceProvider::lookupListener(const char *address) const
+{
+    map<string,Remoted*>::const_iterator i=m_listenerMap.find(address);
+    return (i==m_listenerMap.end()) ? nullptr : i->second;
 }
 
 pair<bool,long> ServiceProvider::doAuthentication(SPRequest& request, bool handler) const
@@ -165,7 +217,7 @@ pair<bool,long> ServiceProvider::doAuthentication(SPRequest& request, bool handl
 #endif
     Category& log = Category::getInstance(SHIBSP_LOGCAT".ServiceProvider");
 
-    const Application* app=NULL;
+    const Application* app=nullptr;
     string targetURL = request.getRequestURL();
 
     try {
@@ -215,28 +267,30 @@ pair<bool,long> ServiceProvider::doAuthentication(SPRequest& request, bool handl
         pair<bool,bool> requireSession = settings.first->getBool("requireSession");
         pair<bool,const char*> requireSessionWith = settings.first->getString("requireSessionWith");
 
-        // If no session is required AND the AuthType (an Apache-derived concept) isn't shibboleth,
+        string lcAuthType;
+        if (authType.first) {
+            while (*authType.second)
+                lcAuthType += tolower(*authType.second++);
+        }
+
+        // If no session is required AND the AuthType (an Apache-derived concept) isn't recognized,
         // then we ignore this request and consider it unprotected. Apache might lie to us if
         // ShibBasicHijack is on, but that's up to it.
         if ((!requireSession.first || !requireSession.second) && !requireSessionWith.first &&
-#ifdef HAVE_STRCASECMP
-                (!authType.first || strcasecmp(authType.second,"shibboleth")))
-#else
-                (!authType.first || _stricmp(authType.second,"shibboleth")))
-#endif
-            return make_pair(true,request.returnDecline());
+                (!authType.first || m_authTypes.find(lcAuthType) == m_authTypes.end()))
+            return make_pair(true, request.returnDecline());
 
         // Fix for secadv 20050901
         clearHeaders(request);
 
-        Session* session = NULL;
+        Session* session = nullptr;
         try {
             session = request.getSession();
         }
         catch (exception& e) {
             log.warn("error during session lookup: %s", e.what());
             // If it's not a retryable session failure, we throw to the outer handler for reporting.
-            if (dynamic_cast<opensaml::RetryableProfileException*>(&e)==NULL)
+            if (dynamic_cast<opensaml::RetryableProfileException*>(&e)==nullptr)
                 throw;
         }
 
@@ -246,7 +300,7 @@ pair<bool,long> ServiceProvider::doAuthentication(SPRequest& request, bool handl
                 return make_pair(true,request.returnOK());
 
             // No session, but we require one. Initiate a new session using the indicated method.
-            const SessionInitiator* initiator=NULL;
+            const SessionInitiator* initiator=nullptr;
             if (requireSessionWith.first) {
                 initiator=app->getSessionInitiatorById(requireSessionWith.second);
                 if (!initiator) {
@@ -264,7 +318,7 @@ pair<bool,long> ServiceProvider::doAuthentication(SPRequest& request, bool handl
             return initiator->run(request,false);
         }
 
-        request.setAuthType("shibboleth");
+        request.setAuthType(lcAuthType.c_str());
 
         // We're done.  Everything is okay.  Nothing to report.  Nothing to do..
         // Let the caller decide how to proceed.
@@ -286,7 +340,7 @@ pair<bool,long> ServiceProvider::doAuthorization(SPRequest& request) const
 #endif
     Category& log = Category::getInstance(SHIBSP_LOGCAT".ServiceProvider");
 
-    const Application* app=NULL;
+    const Application* app=nullptr;
     string targetURL = request.getRequestURL();
 
     try {
@@ -298,20 +352,22 @@ pair<bool,long> ServiceProvider::doAuthorization(SPRequest& request) const
         pair<bool,bool> requireSession = settings.first->getBool("requireSession");
         pair<bool,const char*> requireSessionWith = settings.first->getString("requireSessionWith");
 
-        // If no session is required AND the AuthType (an Apache-derived concept) isn't shibboleth,
+        string lcAuthType;
+        if (authType.first) {
+            while (*authType.second)
+                lcAuthType += tolower(*authType.second++);
+        }
+
+        // If no session is required AND the AuthType (an Apache-derived concept) isn't recognized,
         // then we ignore this request and consider it unprotected. Apache might lie to us if
         // ShibBasicHijack is on, but that's up to it.
         if ((!requireSession.first || !requireSession.second) && !requireSessionWith.first &&
-#ifdef HAVE_STRCASECMP
-                (!authType.first || strcasecmp(authType.second,"shibboleth")))
-#else
-                (!authType.first || _stricmp(authType.second,"shibboleth")))
-#endif
-            return make_pair(true,request.returnDecline());
+                (!authType.first || m_authTypes.find(lcAuthType) == m_authTypes.end()))
+            return make_pair(true, request.returnDecline());
 
         // Do we have an access control plugin?
         if (settings.second) {
-            const Session* session = NULL;
+            const Session* session = nullptr;
             try {
                 session = request.getSession(false);
             }
@@ -357,14 +413,14 @@ pair<bool,long> ServiceProvider::doExport(SPRequest& request, bool requireSessio
 #endif
     Category& log = Category::getInstance(SHIBSP_LOGCAT".ServiceProvider");
 
-    const Application* app=NULL;
+    const Application* app=nullptr;
     string targetURL = request.getRequestURL();
 
     try {
         RequestMapper::Settings settings = request.getRequestSettings();
         app = &(request.getApplication());
 
-        const Session* session = NULL;
+        const Session* session = nullptr;
         try {
             session = request.getSession(false);
         }
@@ -382,6 +438,12 @@ pair<bool,long> ServiceProvider::doExport(SPRequest& request, bool requireSessio
         	else
         		return make_pair(false,0L);	// just bail silently
         }
+
+		pair<bool,const char*> enc = settings.first->getString("encoding");
+		if (enc.first && strcmp(enc.second, "URL"))
+			throw ConfigurationException("Unsupported value for 'encoding' content setting ($1).", params(1,enc.second));
+
+        const URLEncoder* encoder = XMLToolingConfig::getConfig().getURLEncoder();
 
         app->setHeader(request, "Shib-Application-ID", app->getId());
         app->setHeader(request, "Shib-Session-ID", session->getID());
@@ -401,16 +463,18 @@ pair<bool,long> ServiceProvider::doExport(SPRequest& request, bool requireSessio
         hval = session->getAuthnContextDeclRef();
         if (hval)
             app->setHeader(request, "Shib-AuthnContext-Decl", hval);
+        hval = session->getSessionIndex();
+        if (hval)
+            app->setHeader(request, "Shib-Session-Index", hval);
 
         // Maybe export the assertion keys.
         pair<bool,bool> exp=settings.first->getBool("exportAssertion");
         if (exp.first && exp.second) {
             const PropertySet* sessions=app->getPropertySet("Sessions");
-            pair<bool,const char*> exportLocation = sessions ? sessions->getString("exportLocation") : pair<bool,const char*>(false,NULL);
+            pair<bool,const char*> exportLocation = sessions ? sessions->getString("exportLocation") : pair<bool,const char*>(false,nullptr);
             if (!exportLocation.first)
                 log.warn("can't export assertions without an exportLocation Sessions property");
             else {
-                const URLEncoder* encoder = XMLToolingConfig::getConfig().getURLEncoder();
                 string exportName = "Shib-Assertion-00";
                 string baseURL;
                 if (!strncmp(exportLocation.second, "http", 4))
@@ -441,18 +505,24 @@ pair<bool,long> ServiceProvider::doExport(SPRequest& request, bool requireSessio
             for (vector<string>::const_iterator v = vals.begin(); v!=vals.end(); ++v) {
                 if (!header.empty())
                     header += ";";
-                string::size_type pos = v->find_first_of(';',string::size_type(0));
-                if (pos!=string::npos) {
-                    string value(*v);
-                    for (; pos != string::npos; pos = value.find_first_of(';',pos)) {
-                        value.insert(pos, "\\");
-                        pos += 2;
-                    }
-                    header += value;
-                }
-                else {
-                    header += (*v);
-                }
+				if (enc.first) {
+					// If URL-encoding, any semicolons will get escaped anyway.
+					header += encoder->encode(v->c_str());
+				}
+				else {
+					string::size_type pos = v->find_first_of(';',string::size_type(0));
+					if (pos!=string::npos) {
+						string value(*v);
+						for (; pos != string::npos; pos = value.find_first_of(';',pos)) {
+							value.insert(pos, "\\");
+							pos += 2;
+						}
+						header += value;
+					}
+					else {
+						header += (*v);
+					}
+				}
             }
             app->setHeader(request, a->first.c_str(), header.c_str());
         }
@@ -466,7 +536,10 @@ pair<bool,long> ServiceProvider::doExport(SPRequest& request, bool requireSessio
             for (; matches.first != matches.second; ++matches.first) {
                 const vector<string>& vals = matches.first->second->getSerializedValues();
                 if (!vals.empty()) {
-                    request.setRemoteUser(vals.front().c_str());
+					if (enc.first)
+						request.setRemoteUser(encoder->encode(vals.front().c_str()).c_str());
+					else
+						request.setRemoteUser(vals.front().c_str());
                     remoteUserSet = true;
                     break;
                 }
@@ -490,7 +563,7 @@ pair<bool,long> ServiceProvider::doHandler(SPRequest& request) const
 #endif
     Category& log = Category::getInstance(SHIBSP_LOGCAT".ServiceProvider");
 
-    const Application* app=NULL;
+    const Application* app=nullptr;
     string targetURL = request.getRequestURL();
 
     try {

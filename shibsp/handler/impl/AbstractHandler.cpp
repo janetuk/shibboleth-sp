@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2011 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,18 +67,34 @@ using namespace xercesc;
 using namespace std;
 
 namespace shibsp {
+
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory SAML1ConsumerFactory;
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory SAML2ConsumerFactory;
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory SAML2ArtifactResolutionFactory;
-    SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory ChainingLogoutInitiatorFactory;
-    SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory LocalLogoutInitiatorFactory;
-    SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory SAML2LogoutInitiatorFactory;
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory SAML2LogoutFactory;
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory SAML2NameIDMgmtFactory;
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory AssertionLookupFactory;
+    SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory DiscoveryFeedFactory;
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory MetadataGeneratorFactory;
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory StatusHandlerFactory;
     SHIBSP_DLLLOCAL PluginManager< Handler,string,pair<const DOMElement*,const char*> >::Factory SessionHandlerFactory;
+
+    void SHIBSP_DLLLOCAL absolutize(const HTTPRequest& request, string& url) {
+        if (url.empty())
+            url = '/';
+        if (url[0] == '/') {
+            // Compute a URL to the root of the site.
+            int port = request.getPort();
+            const char* scheme = request.getScheme();
+            string root = string(scheme) + "://" + request.getHostname();
+            if ((!strcmp(scheme,"http") && port!=80) || (!strcmp(scheme,"https") && port!=443)) {
+                ostringstream portstr;
+                portstr << port;
+                root += ":" + portstr.str();
+            }
+            url = root + url;
+        }
+    }
 
     void SHIBSP_DLLLOCAL generateRandomHex(std::string& buf, unsigned int len) {
         static char DIGITS[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
@@ -95,35 +111,102 @@ namespace shibsp {
             buf += (DIGITS[0x0F & b2]);
         }
     }
+
+    void SHIBSP_DLLLOCAL limitRelayState(
+        Category& log, const Application& application, const HTTPRequest& httpRequest, const char* relayState
+        ) {
+        const PropertySet* sessionProps = application.getPropertySet("Sessions");
+        if (sessionProps) {
+            pair<bool,const char*> relayStateLimit = sessionProps->getString("relayStateLimit");
+            if (relayStateLimit.first && strcmp(relayStateLimit.second, "none")) {
+                vector<string> whitelist;
+                if (!strcmp(relayStateLimit.second, "exact")) {
+                    // Scheme and hostname have to match.
+                    if (!strcmp(httpRequest.getScheme(), "https") && httpRequest.getPort() == 443) {
+                        whitelist.push_back(string("https://") + httpRequest.getHostname() + '/');
+                    }
+                    else if (!strcmp(httpRequest.getScheme(), "http") && httpRequest.getPort() == 80) {
+                        whitelist.push_back(string("http://") + httpRequest.getHostname() + '/');
+                    }
+                    ostringstream portstr;
+                    portstr << httpRequest.getPort();
+                    whitelist.push_back(string(httpRequest.getScheme()) + "://" + httpRequest.getHostname() + ':' + portstr.str() + '/');
+                }
+                else if (!strcmp(relayStateLimit.second, "host")) {
+                    // Allow any scheme or port.
+                    whitelist.push_back(string("https://") + httpRequest.getHostname() + '/');
+                    whitelist.push_back(string("http://") + httpRequest.getHostname() + '/');
+                    whitelist.push_back(string("https://") + httpRequest.getHostname() + ':');
+                    whitelist.push_back(string("http://") + httpRequest.getHostname() + ':');
+                }
+                else if (!strcmp(relayStateLimit.second, "whitelist")) {
+                    // Literal set of comparisons to use.
+                    pair<bool,const char*> whitelistval = sessionProps->getString("relayStateWhitelist");
+                    if (whitelistval.first) {
+#ifdef HAVE_STRTOK_R
+                        char* pos=nullptr;
+                        const char* token = strtok_r(const_cast<char*>(whitelistval.second), " ", &pos);
+#else
+                        const char* token = strtok(const_cast<char*>(whitelistval.second), " ");
+#endif
+                        while (token) {
+                            whitelist.push_back(token);
+#ifdef HAVE_STRTOK_R
+                            token = strtok_r(nullptr, " ", &pos);
+#else
+                            token = strtok(nullptr, " ");
+#endif
+                        }
+                    }
+                }
+                else {
+                    log.warn("unrecognized relayStateLimit policy (%s), blocked redirect to (%s)", relayStateLimit.second, relayState);
+                    throw opensaml::SecurityPolicyException("Unrecognized relayStateLimit setting.");
+                }
+
+                for (vector<string>::const_iterator w = whitelist.begin(); w != whitelist.end(); ++w) {
+                    if (XMLString::startsWithI(relayState, w->c_str())) {
+                        return;
+                    }
+                }
+
+                log.warn("relayStateLimit policy (%s), blocked redirect to (%s)", relayStateLimit.second, relayState);
+                throw opensaml::SecurityPolicyException("Blocked unacceptable redirect location.");
+            }
+        }
+    }
 };
 
 void SHIBSP_API shibsp::registerHandlers()
 {
     SPConfig& conf=SPConfig::getConfig();
 
+    conf.AssertionConsumerServiceManager.registerFactory(SAML1_ASSERTION_CONSUMER_SERVICE, SAML1ConsumerFactory);
     conf.AssertionConsumerServiceManager.registerFactory(SAML1_PROFILE_BROWSER_ARTIFACT, SAML1ConsumerFactory);
     conf.AssertionConsumerServiceManager.registerFactory(SAML1_PROFILE_BROWSER_POST, SAML1ConsumerFactory);
+    conf.AssertionConsumerServiceManager.registerFactory(SAML20_ASSERTION_CONSUMER_SERVICE, SAML2ConsumerFactory);
     conf.AssertionConsumerServiceManager.registerFactory(SAML20_BINDING_HTTP_POST, SAML2ConsumerFactory);
     conf.AssertionConsumerServiceManager.registerFactory(SAML20_BINDING_HTTP_POST_SIMPLESIGN, SAML2ConsumerFactory);
     conf.AssertionConsumerServiceManager.registerFactory(SAML20_BINDING_HTTP_ARTIFACT, SAML2ConsumerFactory);
     conf.AssertionConsumerServiceManager.registerFactory(SAML20_BINDING_PAOS, SAML2ConsumerFactory);
 
+    conf.ArtifactResolutionServiceManager.registerFactory(SAML20_ARTIFACT_RESOLUTION_SERVICE, SAML2ArtifactResolutionFactory);
     conf.ArtifactResolutionServiceManager.registerFactory(SAML20_BINDING_SOAP, SAML2ArtifactResolutionFactory);
 
     conf.HandlerManager.registerFactory(SAML20_BINDING_URI, AssertionLookupFactory);
+    conf.HandlerManager.registerFactory(DISCOVERY_FEED_HANDLER, DiscoveryFeedFactory);
     conf.HandlerManager.registerFactory(METADATA_GENERATOR_HANDLER, MetadataGeneratorFactory);
     conf.HandlerManager.registerFactory(STATUS_HANDLER, StatusHandlerFactory);
     conf.HandlerManager.registerFactory(SESSION_HANDLER, SessionHandlerFactory);
 
-    conf.LogoutInitiatorManager.registerFactory(CHAINING_LOGOUT_INITIATOR, ChainingLogoutInitiatorFactory);
-    conf.LogoutInitiatorManager.registerFactory(LOCAL_LOGOUT_INITIATOR, LocalLogoutInitiatorFactory);
-    conf.LogoutInitiatorManager.registerFactory(SAML2_LOGOUT_INITIATOR, SAML2LogoutInitiatorFactory);
+    conf.SingleLogoutServiceManager.registerFactory(SAML20_LOGOUT_HANDLER, SAML2LogoutFactory);
     conf.SingleLogoutServiceManager.registerFactory(SAML20_BINDING_SOAP, SAML2LogoutFactory);
     conf.SingleLogoutServiceManager.registerFactory(SAML20_BINDING_HTTP_REDIRECT, SAML2LogoutFactory);
     conf.SingleLogoutServiceManager.registerFactory(SAML20_BINDING_HTTP_POST, SAML2LogoutFactory);
     conf.SingleLogoutServiceManager.registerFactory(SAML20_BINDING_HTTP_POST_SIMPLESIGN, SAML2LogoutFactory);
     conf.SingleLogoutServiceManager.registerFactory(SAML20_BINDING_HTTP_ARTIFACT, SAML2LogoutFactory);
 
+    conf.ManageNameIDServiceManager.registerFactory(SAML20_NAMEID_MGMT_SERVICE, SAML2NameIDMgmtFactory);
     conf.ManageNameIDServiceManager.registerFactory(SAML20_BINDING_SOAP, SAML2NameIDMgmtFactory);
     conf.ManageNameIDServiceManager.registerFactory(SAML20_BINDING_HTTP_REDIRECT, SAML2NameIDMgmtFactory);
     conf.ManageNameIDServiceManager.registerFactory(SAML20_BINDING_HTTP_POST, SAML2NameIDMgmtFactory);
@@ -139,14 +222,218 @@ Handler::~Handler()
 {
 }
 
+#ifndef SHIBSP_LITE
+
+void Handler::generateMetadata(SPSSODescriptor& role, const char* handlerURL) const
+{
+}
+
+#endif
+
+const XMLCh* Handler::getProtocolFamily() const
+{
+    return nullptr;
+}
+
+void Handler::log(SPRequest::SPLogLevel level, const string& msg) const
+{
+    Category::getInstance(SHIBSP_LOGCAT".Handler").log(
+        (level == SPRequest::SPDebug ? Priority::DEBUG :
+        (level == SPRequest::SPInfo ? Priority::INFO :
+        (level == SPRequest::SPWarn ? Priority::WARN :
+        (level == SPRequest::SPError ? Priority::ERROR : Priority::CRIT)))),
+        msg
+        );
+}
+
+void Handler::preserveRelayState(const Application& application, HTTPResponse& response, string& relayState) const
+{
+    // The empty string implies no state to deal with.
+    if (relayState.empty())
+        return;
+
+    // No setting means just pass state by value.
+    pair<bool,const char*> mech = getString("relayState");
+    if (!mech.first) {
+        // Check for setting on Sessions element.
+        const PropertySet* sessionprop = application.getPropertySet("Sessions");
+        if (sessionprop)
+            mech = sessionprop->getString("relayState");
+    }
+    if (!mech.first || !mech.second || !*mech.second)
+        return;
+
+    if (!strcmp(mech.second, "cookie")) {
+        // Here we store the state in a cookie and send a fixed
+        // value so we can recognize it on the way back.
+        if (relayState.find("cookie:") != 0) {
+            const URLEncoder* urlenc = XMLToolingConfig::getConfig().getURLEncoder();
+            pair<string,const char*> shib_cookie=application.getCookieNameProps("_shibstate_");
+            string stateval = urlenc->encode(relayState.c_str()) + shib_cookie.second;
+            // Generate a random key for the cookie name instead of the fixed name.
+            string rsKey;
+            generateRandomHex(rsKey,5);
+            shib_cookie.first = "_shibstate_" + rsKey;
+            response.setCookie(shib_cookie.first.c_str(),stateval.c_str());
+            relayState = "cookie:" + rsKey;
+        }
+    }
+    else if (strstr(mech.second,"ss:")==mech.second) {
+        if (relayState.find("ss:") != 0) {
+            mech.second+=3;
+            if (*mech.second) {
+                if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
+#ifndef SHIBSP_LITE
+                    StorageService* storage = application.getServiceProvider().getStorageService(mech.second);
+                    if (storage) {
+                        string rsKey;
+                        generateRandomHex(rsKey,32);
+                        if (!storage->createString("RelayState", rsKey.c_str(), relayState.c_str(), time(nullptr) + 600))
+                            throw IOException("Attempted to insert duplicate storage key.");
+                        relayState = string(mech.second-3) + ':' + rsKey;
+                    }
+                    else {
+                        string msg("Storage-backed RelayState with invalid StorageService ID (");
+                        msg = msg + mech.second+ ')';
+                        log(SPRequest::SPError, msg);
+                        relayState.erase();
+                    }
+#endif
+                }
+                else if (SPConfig::getConfig().isEnabled(SPConfig::InProcess)) {
+                    DDF out,in = DDF("set::RelayState").structure();
+                    in.addmember("id").string(mech.second);
+                    in.addmember("value").unsafe_string(relayState.c_str());
+                    DDFJanitor jin(in),jout(out);
+                    out = application.getServiceProvider().getListenerService()->send(in);
+                    if (!out.isstring())
+                        throw IOException("StorageService-backed RelayState mechanism did not return a state key.");
+                    relayState = string(mech.second-3) + ':' + out.string();
+                }
+            }
+        }
+    }
+    else
+        throw ConfigurationException("Unsupported relayState mechanism ($1).", params(1,mech.second));
+}
+
+void Handler::recoverRelayState(
+    const Application& application, const HTTPRequest& request, HTTPResponse& response, string& relayState, bool clear
+    ) const
+{
+    SPConfig& conf = SPConfig::getConfig();
+
+    // Look for StorageService-backed state of the form "ss:SSID:key".
+    const char* state = relayState.c_str();
+    if (strstr(state,"ss:")==state) {
+        state += 3;
+        const char* key = strchr(state,':');
+        if (key) {
+            string ssid = relayState.substr(3, key - state);
+            key++;
+            if (!ssid.empty() && *key) {
+                if (conf.isEnabled(SPConfig::OutOfProcess)) {
+#ifndef SHIBSP_LITE
+                    StorageService* storage = conf.getServiceProvider()->getStorageService(ssid.c_str());
+                    if (storage) {
+                        ssid = key;
+                        if (storage->readString("RelayState",ssid.c_str(),&relayState) > 0) {
+                            if (clear)
+                                storage->deleteString("RelayState",ssid.c_str());
+                            absolutize(request, relayState);
+                            return;
+                        }
+                        else
+                            relayState.erase();
+                    }
+                    else {
+                        string msg("Storage-backed RelayState with invalid StorageService ID (");
+                        msg += ssid + ')';
+                        log(SPRequest::SPError, msg);
+                        relayState.erase();
+                    }
+#endif
+                }
+                else if (conf.isEnabled(SPConfig::InProcess)) {
+                    DDF out,in = DDF("get::RelayState").structure();
+                    in.addmember("id").string(ssid.c_str());
+                    in.addmember("key").string(key);
+                    in.addmember("clear").integer(clear ? 1 : 0);
+                    DDFJanitor jin(in),jout(out);
+                    out = application.getServiceProvider().getListenerService()->send(in);
+                    if (!out.isstring()) {
+                        log(SPRequest::SPError, "StorageService-backed RelayState mechanism did not return a state value.");
+                        relayState.erase();
+                    }
+                    else {
+                        relayState = out.string();
+                        absolutize(request, relayState);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    // Look for cookie-backed state of the form "cookie:key".
+    if (strstr(state,"cookie:")==state) {
+        state += 7;
+        if (*state) {
+            // Pull the value from the "relay state" cookie.
+            pair<string,const char*> relay_cookie = application.getCookieNameProps("_shibstate_");
+            relay_cookie.first = string("_shibstate_") + state;
+            state = request.getCookie(relay_cookie.first.c_str());
+            if (state && *state) {
+                // URL-decode the value.
+                char* rscopy=strdup(state);
+                XMLToolingConfig::getConfig().getURLEncoder()->decode(rscopy);
+                relayState = rscopy;
+                free(rscopy);
+
+                if (clear) {
+                    string exp(relay_cookie.second);
+                    exp += "; expires=Mon, 01 Jan 2001 00:00:00 GMT";
+                    response.setCookie(relay_cookie.first.c_str(), exp.c_str());
+                }
+                absolutize(request, relayState);
+                return;
+            }
+        }
+
+        relayState.erase();
+    }
+
+    // Check for "default" value (or the old "cookie" value that might come from stale bookmarks).
+    if (relayState.empty() || relayState == "default" || relayState == "cookie") {
+        pair<bool,const char*> homeURL=application.getString("homeURL");
+        if (homeURL.first)
+            relayState = homeURL.second;
+        else
+            relayState = '/';
+    }
+
+    absolutize(request, relayState);
+}
+
 AbstractHandler::AbstractHandler(
     const DOMElement* e, Category& log, DOMNodeFilter* filter, const map<string,string>* remapper
     ) : m_log(log), m_configNS(shibspconstants::SHIB2SPCONFIG_NS) {
-    load(e,NULL,filter,remapper);
+    load(e,nullptr,filter,remapper);
 }
 
 AbstractHandler::~AbstractHandler()
 {
+}
+
+void AbstractHandler::log(SPRequest::SPLogLevel level, const string& msg) const
+{
+    m_log.log(
+        (level == SPRequest::SPDebug ? Priority::DEBUG :
+        (level == SPRequest::SPInfo ? Priority::INFO :
+        (level == SPRequest::SPWarn ? Priority::WARN :
+        (level == SPRequest::SPError ? Priority::ERROR : Priority::CRIT)))),
+        msg
+        );
 }
 
 #ifndef SHIBSP_LITE
@@ -163,7 +450,7 @@ void AbstractHandler::checkError(const XMLObject* response, const saml2md::RoleD
         const saml2p::Status* status = r2->getStatus();
         if (status) {
             const saml2p::StatusCode* sc = status->getStatusCode();
-            const XMLCh* code = sc ? sc->getValue() : NULL;
+            const XMLCh* code = sc ? sc->getValue() : nullptr;
             if (code && !XMLString::equals(code,saml2p::StatusCode::SUCCESS)) {
                 FatalProfileException ex("SAML response contained an error.");
                 annotateException(&ex, role, status);   // throws it
@@ -176,7 +463,7 @@ void AbstractHandler::checkError(const XMLObject* response, const saml2md::RoleD
         const saml1p::Status* status = r1->getStatus();
         if (status) {
             const saml1p::StatusCode* sc = status->getStatusCode();
-            const xmltooling::QName* code = sc ? sc->getValue() : NULL;
+            const xmltooling::QName* code = sc ? sc->getValue() : nullptr;
             if (code && *code != saml1p::StatusCode::SUCCESS) {
                 FatalProfileException ex("SAML response contained an error.");
                 ex.addProperty("statusCode", code->toString().c_str());
@@ -228,7 +515,7 @@ long AbstractHandler::sendMessage(
     bool signIfPossible
     ) const
 {
-    const EntityDescriptor* entity = role ? dynamic_cast<const EntityDescriptor*>(role->getParent()) : NULL;
+    const EntityDescriptor* entity = role ? dynamic_cast<const EntityDescriptor*>(role->getParent()) : nullptr;
     const PropertySet* relyingParty = application.getRelyingParty(entity);
     pair<bool,const char*> flag = signIfPossible ? make_pair(true,(const char*)"true") : relyingParty->getString("signing");
     if (role && flag.first &&
@@ -238,7 +525,7 @@ long AbstractHandler::sendMessage(
         CredentialResolver* credResolver=application.getCredentialResolver();
         if (credResolver) {
             Locker credLocker(credResolver);
-            const Credential* cred = NULL;
+            const Credential* cred = nullptr;
             pair<bool,const char*> keyName = relyingParty->getString("keyName");
             pair<bool,const XMLCh*> sigalg = relyingParty->getXMLString("signingAlg");
             if (role) {
@@ -246,9 +533,19 @@ long AbstractHandler::sendMessage(
                 mcc.setUsage(Credential::SIGNING_CREDENTIAL);
                 if (keyName.first)
                     mcc.getKeyNames().insert(keyName.second);
-                if (sigalg.first)
+                if (sigalg.first) {
+                    // Using an explicit algorithm, so resolve a credential directly.
                     mcc.setXMLAlgorithm(sigalg.second);
-                cred = credResolver->resolve(&mcc);
+                    cred = credResolver->resolve(&mcc);
+                }
+                else {
+                    // Prefer credential based on peer's requirements.
+                    pair<const SigningMethod*,const Credential*> p = role->getSigningMethod(*credResolver, mcc);
+                    if (p.first)
+                        sigalg = make_pair(true, p.first->getAlgorithm());
+                    if (p.second)
+                        cred = p.second;
+                }
             }
             else {
                 CredentialCriteria cc;
@@ -261,6 +558,12 @@ long AbstractHandler::sendMessage(
             }
             if (cred) {
                 // Signed request.
+                pair<bool,const XMLCh*> digalg = relyingParty->getXMLString("digestAlg");
+                if (!digalg.first && role) {
+                    const DigestMethod* dm = role->getDigestMethod();
+                    if (dm)
+                        digalg = make_pair(true, dm->getAlgorithm());
+                }
                 return encoder.encode(
                     httpResponse,
                     msg,
@@ -270,7 +573,7 @@ long AbstractHandler::sendMessage(
                     &application,
                     cred,
                     sigalg.second,
-                    relyingParty->getXMLString("digestAlg").second
+                    (digalg.first ? digalg.second : nullptr)
                     );
             }
             else {
@@ -288,169 +591,6 @@ long AbstractHandler::sendMessage(
 
 #endif
 
-void AbstractHandler::preserveRelayState(const Application& application, HTTPResponse& response, string& relayState) const
-{
-    if (relayState.empty())
-        return;
-
-    // No setting means just pass it by value.
-    pair<bool,const char*> mech=getString("relayState");
-    if (!mech.first || !mech.second || !*mech.second)
-        return;
-
-    if (!strcmp(mech.second, "cookie")) {
-        // Here we store the state in a cookie and send a fixed
-        // value so we can recognize it on the way back.
-        if (relayState.find("cookie:") != 0) {
-            const URLEncoder* urlenc = XMLToolingConfig::getConfig().getURLEncoder();
-            pair<string,const char*> shib_cookie=application.getCookieNameProps("_shibstate_");
-            string stateval = urlenc->encode(relayState.c_str()) + shib_cookie.second;
-            // Generate a random key for the cookie name instead of the fixed name.
-            string rsKey;
-            generateRandomHex(rsKey,5);
-            shib_cookie.first = "_shibstate_" + rsKey;
-            response.setCookie(shib_cookie.first.c_str(),stateval.c_str());
-            relayState = "cookie:" + rsKey;
-        }
-    }
-    else if (strstr(mech.second,"ss:")==mech.second) {
-        if (relayState.find("ss:") != 0) {
-            mech.second+=3;
-            if (*mech.second) {
-                if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
-#ifndef SHIBSP_LITE
-                    StorageService* storage = application.getServiceProvider().getStorageService(mech.second);
-                    if (storage) {
-                        string rsKey;
-                        generateRandomHex(rsKey,5);
-                        if (!storage->createString("RelayState", rsKey.c_str(), relayState.c_str(), time(NULL) + 600))
-                            throw IOException("Attempted to insert duplicate storage key.");
-                        relayState = string(mech.second-3) + ':' + rsKey;
-                    }
-                    else {
-                        m_log.error("Storage-backed RelayState with invalid StorageService ID (%s)", mech.second);
-                        relayState.erase();
-                    }
-#endif
-                }
-                else if (SPConfig::getConfig().isEnabled(SPConfig::InProcess)) {
-                    DDF out,in = DDF("set::RelayState").structure();
-                    in.addmember("id").string(mech.second);
-                    in.addmember("value").unsafe_string(relayState.c_str());
-                    DDFJanitor jin(in),jout(out);
-                    out = application.getServiceProvider().getListenerService()->send(in);
-                    if (!out.isstring())
-                        throw IOException("StorageService-backed RelayState mechanism did not return a state key.");
-                    relayState = string(mech.second-3) + ':' + out.string();
-                }
-            }
-        }
-    }
-    else
-        throw ConfigurationException("Unsupported relayState mechanism ($1).", params(1,mech.second));
-}
-
-void AbstractHandler::recoverRelayState(
-    const Application& application, const HTTPRequest& request, HTTPResponse& response, string& relayState, bool clear
-    ) const
-{
-    SPConfig& conf = SPConfig::getConfig();
-
-    // Look for StorageService-backed state of the form "ss:SSID:key".
-    const char* state = relayState.c_str();
-    if (strstr(state,"ss:")==state) {
-        state += 3;
-        const char* key = strchr(state,':');
-        if (key) {
-            string ssid = relayState.substr(3, key - state);
-            key++;
-            if (!ssid.empty() && *key) {
-                if (conf.isEnabled(SPConfig::OutOfProcess)) {
-#ifndef SHIBSP_LITE
-                    StorageService* storage = conf.getServiceProvider()->getStorageService(ssid.c_str());
-                    if (storage) {
-                        ssid = key;
-                        if (storage->readString("RelayState",ssid.c_str(),&relayState)>0) {
-                            if (clear)
-                                storage->deleteString("RelayState",ssid.c_str());
-                            return;
-                        }
-                        else
-                            relayState.erase();
-                    }
-                    else {
-                        m_log.error("Storage-backed RelayState with invalid StorageService ID (%s)", ssid.c_str());
-                        relayState.erase();
-                    }
-#endif
-                }
-                else if (conf.isEnabled(SPConfig::InProcess)) {
-                    DDF out,in = DDF("get::RelayState").structure();
-                    in.addmember("id").string(ssid.c_str());
-                    in.addmember("key").string(key);
-                    in.addmember("clear").integer(clear ? 1 : 0);
-                    DDFJanitor jin(in),jout(out);
-                    out = application.getServiceProvider().getListenerService()->send(in);
-                    if (!out.isstring()) {
-                        m_log.error("StorageService-backed RelayState mechanism did not return a state value.");
-                        relayState.erase();
-                    }
-                    else {
-                        relayState = out.string();
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    // Look for cookie-backed state of the form "cookie:key".
-    if (strstr(state,"cookie:")==state) {
-        state += 7;
-        if (*state) {
-            // Pull the value from the "relay state" cookie.
-            pair<string,const char*> relay_cookie = application.getCookieNameProps("_shibstate_");
-            relay_cookie.first = string("_shibstate_") + state;
-            state = request.getCookie(relay_cookie.first.c_str());
-            if (state && *state) {
-                // URL-decode the value.
-                char* rscopy=strdup(state);
-                XMLToolingConfig::getConfig().getURLEncoder()->decode(rscopy);
-                relayState = rscopy;
-                free(rscopy);
-
-                if (clear) {
-                    string exp(relay_cookie.second);
-                    exp += "; expires=Mon, 01 Jan 2001 00:00:00 GMT";
-                    response.setCookie(relay_cookie.first.c_str(), exp.c_str());
-                }
-                return;
-            }
-        }
-
-        relayState.erase();
-    }
-
-    // Check for "default" value (or the old "cookie" value that might come from stale bookmarks).
-    if (relayState.empty() || relayState == "default" || relayState == "cookie") {
-        pair<bool,const char*> homeURL=application.getString("homeURL");
-        if (homeURL.first)
-            relayState=homeURL.second;
-        else {
-            // Compute a URL to the root of the site.
-            int port = request.getPort();
-            const char* scheme = request.getScheme();
-            relayState = string(scheme) + "://" + request.getHostname();
-            if ((!strcmp(scheme,"http") && port!=80) || (!strcmp(scheme,"https") && port!=443)) {
-                ostringstream portstr;
-                portstr << port;
-                relayState += ":" + portstr.str();
-            }
-            relayState += '/';
-        }
-    }
-}
-
 void AbstractHandler::preservePostData(
     const Application& application, const HTTPRequest& request, HTTPResponse& response, const char* relayState
     ) const
@@ -463,7 +603,7 @@ void AbstractHandler::preservePostData(
 
     // No specs mean no save.
     const PropertySet* props=application.getPropertySet("Sessions");
-    pair<bool,const char*> mech = props->getString("postData");
+    pair<bool,const char*> mech = props ? props->getString("postData") : pair<bool,const char*>(false,nullptr);
     if (!mech.first) {
         m_log.info("postData property not supplied, form data will not be preserved across SSO");
         return;
@@ -488,11 +628,11 @@ void AbstractHandler::preservePostData(
             if (storage) {
                 // Use a random key
                 string rsKey;
-                SAMLConfig::getConfig().generateRandomBytes(rsKey,20);
+                SAMLConfig::getConfig().generateRandomBytes(rsKey,32);
                 rsKey = SAMLArtifact::toHex(rsKey);
                 ostringstream out;
                 out << postData;
-                if (!storage->createString("PostData", rsKey.c_str(), out.str().c_str(), time(NULL) + 600))
+                if (!storage->createString("PostData", rsKey.c_str(), out.str().c_str(), time(nullptr) + 600))
                     throw IOException("Attempted to insert duplicate storage key.");
                 postkey = string(mech.second-3) + ':' + rsKey;
             }
@@ -592,9 +732,9 @@ long AbstractHandler::sendPostResponse(
     HTTPResponse::sanitizeURL(url);
 
     const PropertySet* props=application.getPropertySet("Sessions");
-    pair<bool,const char*> postTemplate = props->getString("postTemplate");
+    pair<bool,const char*> postTemplate = props ? props->getString("postTemplate") : pair<bool,const char*>(true,nullptr);
     if (!postTemplate.first)
-        throw ConfigurationException("Missing postTemplate property, unable to recreate form post.");
+        postTemplate.second = "postTemplate.html";
 
     string fname(postTemplate.second);
     ifstream infile(XMLToolingConfig::getConfig().getPathResolver()->resolve(fname, PathResolver::XMLTOOLING_CFG_FILE).c_str());
@@ -614,7 +754,7 @@ long AbstractHandler::sendPostResponse(
     stringstream str;
     XMLToolingConfig::getConfig().getTemplateEngine()->run(infile, str, respParam);
 
-    pair<bool,bool> postExpire = props->getBool("postExpire");
+    pair<bool,bool> postExpire = props ? props->getBool("postExpire") : make_pair(false,false);
 
     httpResponse.setContentType("text/html");
     if (!postExpire.first || postExpire.second) {
@@ -647,12 +787,12 @@ DDF AbstractHandler::getPostData(const Application& application, const HTTPReque
     string contentType = request.getContentType();
     if (contentType.compare("application/x-www-form-urlencoded") == 0) {
         const PropertySet* props=application.getPropertySet("Sessions");
-        pair<bool,unsigned int> plimit = props->getUnsignedInt("postLimit");
+        pair<bool,unsigned int> plimit = props ? props->getUnsignedInt("postLimit") : pair<bool,unsigned int>(false,0);
         if (!plimit.first)
             plimit.second = 1024 * 1024;
         if (plimit.second == 0 || request.getContentLength() <= plimit.second) {
             CGIParser cgi(request);
-            pair<CGIParser::walker,CGIParser::walker> params = cgi.getParameters(NULL);
+            pair<CGIParser::walker,CGIParser::walker> params = cgi.getParameters(nullptr);
             if (params.first == params.second)
                 return DDF("parameters").list();
             DDF child;
@@ -673,4 +813,88 @@ DDF AbstractHandler::getPostData(const Application& application, const HTTPReque
         m_log.info("ignoring POST data with non-standard encoding (%s)", contentType.c_str());
     }
     return DDF();
+}
+
+pair<bool,bool> AbstractHandler::getBool(const char* name, const SPRequest& request, unsigned int type) const
+{
+    if (type & HANDLER_PROPERTY_REQUEST) {
+        const char* param = request.getParameter(name);
+        if (param && *param)
+            return make_pair(true, (*param=='t' || *param=='1'));
+    }
+    
+    if (type & HANDLER_PROPERTY_MAP) {
+        pair<bool,bool> ret = request.getRequestSettings().first->getBool(name);
+        if (ret.first)
+            return ret;
+    }
+
+    if (type & HANDLER_PROPERTY_FIXED) {
+        return getBool(name);
+    }
+
+    return make_pair(false,false);
+}
+
+pair<bool,const char*> AbstractHandler::getString(const char* name, const SPRequest& request, unsigned int type) const
+{
+    if (type & HANDLER_PROPERTY_REQUEST) {
+        const char* param = request.getParameter(name);
+        if (param && *param)
+            return make_pair(true, param);
+    }
+    
+    if (type & HANDLER_PROPERTY_MAP) {
+        pair<bool,const char*> ret = request.getRequestSettings().first->getString(name);
+        if (ret.first)
+            return ret;
+    }
+
+    if (type & HANDLER_PROPERTY_FIXED) {
+        return getString(name);
+    }
+
+    return pair<bool,const char*>(false,nullptr);
+}
+
+pair<bool,unsigned int> AbstractHandler::getUnsignedInt(const char* name, const SPRequest& request, unsigned int type) const
+{
+    if (type & HANDLER_PROPERTY_REQUEST) {
+        const char* param = request.getParameter(name);
+        if (param && *param)
+            return pair<bool,unsigned int>(true, strtol(param,nullptr,10));
+    }
+    
+    if (type & HANDLER_PROPERTY_MAP) {
+        pair<bool,unsigned int> ret = request.getRequestSettings().first->getUnsignedInt(name);
+        if (ret.first)
+            return ret;
+    }
+
+    if (type & HANDLER_PROPERTY_FIXED) {
+        return getUnsignedInt(name);
+    }
+
+    return pair<bool,unsigned int>(false,0);
+}
+
+pair<bool,int> AbstractHandler::getInt(const char* name, const SPRequest& request, unsigned int type) const
+{
+    if (type & HANDLER_PROPERTY_REQUEST) {
+        const char* param = request.getParameter(name);
+        if (param && *param)
+            return pair<bool,int>(true, atoi(param));
+    }
+    
+    if (type & HANDLER_PROPERTY_MAP) {
+        pair<bool,int> ret = request.getRequestSettings().first->getInt(name);
+        if (ret.first)
+            return ret;
+    }
+
+    if (type & HANDLER_PROPERTY_FIXED) {
+        return getInt(name);
+    }
+
+    return pair<bool,int>(false,0);
 }

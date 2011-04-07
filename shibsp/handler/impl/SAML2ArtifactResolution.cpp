@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@
 
 #ifndef SHIBSP_LITE
 # include "security/SecurityPolicy.h"
+# include "security/SecurityPolicyProvider.h"
 # include <saml/exceptions.h>
 # include <saml/SAMLConfig.h>
 # include <saml/binding/ArtifactMap.h>
@@ -44,7 +45,8 @@ using namespace opensaml::saml2md;
 using namespace opensaml::saml2p;
 using namespace opensaml::saml2;
 using namespace opensaml;
-using namespace samlconstants;
+#else
+# include "lite/SAMLConstants.h"
 #endif
 
 #include <xmltooling/soap/SOAP.h>
@@ -105,6 +107,9 @@ namespace shibsp {
             role.getArtifactResolutionServices().push_back(ep);
         }
 #endif
+        const XMLCh* getProtocolFamily() const {
+            return samlconstants::SAML20P_NS;
+        }
 
     private:
         pair<bool,long> processMessage(const Application& application, HTTPRequest& httpRequest, HTTPResponse& httpResponse) const;
@@ -133,17 +138,17 @@ namespace shibsp {
 SAML2ArtifactResolution::SAML2ArtifactResolution(const DOMElement* e, const char* appId)
     : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".ArtifactResolution.SAML2"))
 #ifndef SHIBSP_LITE
-        ,m_encoder(NULL), m_decoder(NULL), m_role(samlconstants::SAML20MD_NS, opensaml::saml2md::IDPSSODescriptor::LOCAL_NAME)
+        ,m_encoder(nullptr), m_decoder(nullptr), m_role(samlconstants::SAML20MD_NS, opensaml::saml2md::IDPSSODescriptor::LOCAL_NAME)
 #endif
 {
 #ifndef SHIBSP_LITE
     if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
         try {
             m_encoder = SAMLConfig::getConfig().MessageEncoderManager.newPlugin(
-                getString("Binding").second,pair<const DOMElement*,const XMLCh*>(e,NULL)
+                getString("Binding").second,pair<const DOMElement*,const XMLCh*>(e,nullptr)
                 );
             m_decoder = SAMLConfig::getConfig().MessageDecoderManager.newPlugin(
-                getString("Binding").second,pair<const DOMElement*,const XMLCh*>(e,NULL)
+                getString("Binding").second,pair<const DOMElement*,const XMLCh*>(e,nullptr)
                 );
         }
         catch (exception&) {
@@ -180,7 +185,7 @@ pair<bool,long> SAML2ArtifactResolution::run(SPRequest& request, bool isHandler)
         }
         else {
             // When not out of process, we remote all the message processing.
-            DDF out,in = wrap(request, NULL, true);
+            DDF out,in = wrap(request, nullptr, true);
             DDFJanitor jin(in), jout(out);
             
             out=request.getServiceProvider().getListenerService()->send(in);
@@ -202,7 +207,7 @@ pair<bool,long> SAML2ArtifactResolution::run(SPRequest& request, bool isHandler)
         fs->setString(msg.get());
 #ifndef SHIBSP_LITE
         // Use MessageEncoder to send back the fault.
-        long ret = m_encoder->encode(request, fault.get(), NULL);
+        long ret = m_encoder->encode(request, fault.get(), nullptr);
         fault.release();
         return make_pair(true, ret);
 #else
@@ -224,7 +229,7 @@ void SAML2ArtifactResolution::receive(DDF& in, ostream& out)
 {
     // Find application.
     const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : NULL;
+    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for artifact resolution", aid ? aid : "(missing)");
@@ -236,7 +241,7 @@ void SAML2ArtifactResolution::receive(DDF& in, ostream& out)
     //m_log.debug("found %d client certificates", req->getClientCertificates().size());
 
     // Wrap a response shim.
-    DDF ret(NULL);
+    DDF ret(nullptr);
     DDFJanitor jout(ret);
     auto_ptr<HTTPResponse> resp(getResponse(ret));
         
@@ -261,7 +266,7 @@ void SAML2ArtifactResolution::receive(DDF& in, ostream& out)
         pair<bool,bool> flag = getBool("detailedErrors", m_configNS.get());
         auto_ptr_XMLCh msg((flag.first && flag.second) ? ex.what() : "Error processing request.");
         fs->setString(msg.get());
-        m_encoder->encode(*resp.get(), fault.get(), NULL);
+        m_encoder->encode(*resp.get(), fault.get(), nullptr);
         fault.release();
         out << ret;
 #else
@@ -284,32 +289,30 @@ pair<bool,long> SAML2ArtifactResolution::processMessage(const Application& appli
     if (!policyId.first)
         policyId = application.getString("policyId");   // unqualified in Application(s) element
         
-    // Access policy properties.
-    const PropertySet* settings = application.getServiceProvider().getPolicySettings(policyId.second);
-    pair<bool,bool> validate = settings->getBool("validate");
-
     // Lock metadata for use by policy.
     Locker metadataLocker(application.getMetadataProvider());
 
     // Create the policy.
-    shibsp::SecurityPolicy policy(application, &m_role, validate.first && validate.second);
+    auto_ptr<SecurityPolicy> policy(
+        application.getServiceProvider().getSecurityPolicyProvider()->createSecurityPolicy(application, &m_role, policyId.second)
+        );
     
     // Decode the message and verify that it's a secured ArtifactResolve request.
     string relayState;
-    auto_ptr<XMLObject> msg(m_decoder->decode(relayState, httpRequest, policy));
+    auto_ptr<XMLObject> msg(m_decoder->decode(relayState, httpRequest, *policy.get()));
     if (!msg.get())
         throw BindingException("Failed to decode a SAML request.");
     const ArtifactResolve* req = dynamic_cast<const ArtifactResolve*>(msg.get());
     if (!req)
         throw FatalProfileException("Decoded message was not a samlp::ArtifactResolve request.");
 
-    const EntityDescriptor* entity = policy.getIssuerMetadata() ? dynamic_cast<EntityDescriptor*>(policy.getIssuerMetadata()->getParent()) : NULL;
+    const EntityDescriptor* entity = policy->getIssuerMetadata() ? dynamic_cast<EntityDescriptor*>(policy->getIssuerMetadata()->getParent()) : nullptr;
 
     try {
-        auto_ptr_char artifact(req->getArtifact() ? req->getArtifact()->getArtifact() : NULL);
+        auto_ptr_char artifact(req->getArtifact() ? req->getArtifact()->getArtifact() : nullptr);
         if (!artifact.get() || !*artifact.get())
             return emptyResponse(application, *req, httpResponse, entity);
-        auto_ptr_char issuer(policy.getIssuer() ? policy.getIssuer()->getName() : NULL);
+        auto_ptr_char issuer(policy->getIssuer() ? policy->getIssuer()->getName() : nullptr);
 
         m_log.info("resolving artifact (%s) for (%s)", artifact.get(), issuer.get() ? issuer.get() : "unknown");
 
@@ -317,7 +320,7 @@ pair<bool,long> SAML2ArtifactResolution::processMessage(const Application& appli
         auto_ptr<SAMLArtifact> artobj(SAMLArtifact::parse(artifact.get()));
         auto_ptr<XMLObject> payload(artmap->retrieveContent(artobj.get(), issuer.get()));
 
-        if (!policy.isAuthenticated()) {
+        if (!policy->isAuthenticated()) {
             m_log.error("request for artifact was unauthenticated, purging the artifact mapping");
             return emptyResponse(application, *req, httpResponse, entity);
         }
@@ -332,7 +335,7 @@ pair<bool,long> SAML2ArtifactResolution::processMessage(const Application& appli
         resp->setPayload(payload.release());
 
         long ret = sendMessage(
-            *m_encoder, resp.get(), relayState.c_str(), NULL, policy.getIssuerMetadata(), application, httpResponse, "signResponses"
+            *m_encoder, resp.get(), relayState.c_str(), nullptr, policy->getIssuerMetadata(), application, httpResponse, "signResponses"
             );
         resp.release();  // freed by encoder
         return make_pair(true,ret);
@@ -357,7 +360,7 @@ pair<bool,long> SAML2ArtifactResolution::emptyResponse(
     Issuer* me = IssuerBuilder::buildIssuer();
     me->setName(app.getRelyingParty(recipient)->getXMLString("entityID").second);
     fillStatus(*resp.get(), StatusCode::SUCCESS);
-    long ret = m_encoder->encode(httpResponse, resp.get(), NULL);
+    long ret = m_encoder->encode(httpResponse, resp.get(), nullptr);
     resp.release();  // freed by encoder
     return make_pair(true,ret);
 }

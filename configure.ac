@@ -1,10 +1,11 @@
 AC_PREREQ([2.50])
-AC_INIT([shibboleth], [2.3.1], [shibboleth-users@internet2.edu], [shibboleth])
-AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE([shibboleth],[2.3.1])
-
-sinclude(doxygen.m4)
-sinclude(acx_pthread.m4)
+AC_INIT([shibboleth],[2.4.2],[https://bugs.internet2.edu/],[shibboleth])
+AC_CONFIG_SRCDIR(shibsp)
+AC_CONFIG_AUX_DIR(build-aux)
+AC_CONFIG_MACRO_DIR(m4)
+AM_INIT_AUTOMAKE
+AC_DISABLE_STATIC
+AC_PROG_LIBTOOL
 
 # Docygen features
 DX_HTML_FEATURE(ON)
@@ -19,8 +20,7 @@ DX_INIT_DOXYGEN(shibboleth, doxygen.cfg, doc/api)
 DX_INCLUDE=
 
 AC_ARG_ENABLE(debug,
-    AC_HELP_STRING(--enable-debug, [Have GCC compile with symbols (Default = no)
-]),
+    AS_HELP_STRING([--enable-debug],[Have GCC compile with symbols (Default = no)]),
     enable_debug=$enableval, enable_debug=no)
 
 if test "$enable_debug" = "yes" ; then
@@ -30,6 +30,9 @@ else
     GCC_CFLAGS="$CFLAGS -O2 -DNDEBUG"
     GCC_CXXFLAGS="$CXXFLAGS -O2 -DNDEBUG"
 fi
+
+AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_FILES([shibboleth.spec pkginfo Portfile])
 
 AC_PROG_CC([gcc gcc3 cc])
 AC_PROG_CXX([g++ g++3 c++ CC])
@@ -59,9 +62,6 @@ else
 	esac
 fi
 
-AC_DISABLE_STATIC
-AC_PROG_LIBTOOL
-
 AC_LANG(C)
 
 # Checks for typedefs, structures, and compiler characteristics.
@@ -72,6 +72,7 @@ AC_STRUCT_TM
 # Checks for library functions.
 AC_FUNC_STRFTIME
 AC_FUNC_STRERROR_R
+AC_CHECK_HEADERS([sys/utsname.h])
 AC_CHECK_FUNCS([strchr strdup strstr timegm gmtime_r strtok_r strcasecmp])
 
 # checks for pthreads
@@ -79,7 +80,7 @@ ACX_PTHREAD([enable_threads="pthread"],[enable_threads="no"])
 if test $enable_threads != "pthread"; then
     AC_MSG_ERROR([unable to find pthreads, currently this is required])
 else
-    AC_DEFINE(HAVE_PTHREAD,1,[Define if you have POSIX threads libraries and header files.])
+    AC_DEFINE([HAVE_PTHREAD],[1],[Define if you have POSIX threads libraries and header files.])
     LIBS="$PTHREAD_LIBS $LIBS"
     CFLAGS="$PTHREAD_CFLAGS $CFLAGS"
     CXXFLAGS="$PTHREAD_CFLAGS $CXXFLAGS"
@@ -87,18 +88,18 @@ fi
 
 # OpenSSL settings
 AC_ARG_WITH(openssl,
-    AC_HELP_STRING([--with-openssl=PATH], [where openssl is installed]),
+    AS_HELP_STRING([--with-openssl=PATH],[where openssl is installed]),
     [if test x_$with_openssl != x_/usr; then
         SSLFLAGS="-I${with_openssl}/include"
     fi])
 
-if test "x$SSLFLAGS" = "x" ; then
+if test "x$with_openssl" = "x" ; then
     AC_PATH_PROG(PKG_CONFIG, pkg-config)
     if test "x$PKG_CONFIG" != x && test "x$PKG_CONFIG" != "xno" ; then
         if pkg-config openssl ; then
             SSLFLAGS="`$PKG_CONFIG --cflags openssl`"
         else
-            AC_MSG_ERROR([OpenSSL not supported by pkg-config, try --with-openssl instead])
+            AC_MSG_WARN([OpenSSL not supported by pkg-config, try --with-openssl instead])
         fi
     fi
 fi
@@ -107,134 +108,120 @@ AC_MSG_CHECKING(for OpenSSL cflags)
 AC_MSG_RESULT($SSLFLAGS)
 CPPFLAGS="$SSLFLAGS $CPPFLAGS"
 
-AC_CHECK_HEADER([openssl/x509.h],,
-                AC_MSG_ERROR([unable to find openssl header files]))
+AC_CHECK_HEADER([openssl/x509.h],,AC_MSG_ERROR([unable to find openssl header files]))
 
-AC_LANG(C++)
+AC_LANG([C++])
 
 # C++ requirements
-AC_CXX_REQUIRE_STL
 AC_CXX_NAMESPACES
+AC_CXX_REQUIRE_STL
 
 # Thank you Solaris, really.
 AC_MSG_CHECKING(for ctime_r)
- if test -z "$ac_cv_ctime_args"; then
-     AC_TRY_COMPILE(
-     [#include <time.h>],
-     [
-         time_t clock;
-         char buf[26];
-         ctime_r(&clock, buf);
-     ], ac_cv_ctime_args=2)
+if test -z "$ac_cv_ctime_args"; then
+    AC_COMPILE_IFELSE(
+        [AC_LANG_PROGRAM([[#include <time.h>]], [[time_t clock; char buf[26]; ctime_r(&clock, buf);]])],
+        [ac_cv_ctime_args=2],[])
 
-     AC_TRY_COMPILE(
-     [#include <time.h>],
-     [
-         time_t clock;
-         char buf[26];
-         ctime_r(&clock, buf, 26);
-     ], ac_cv_ctime_args=3)
- fi
- if test -z "$ac_cv_ctime_args"; then
-     AC_MSG_RESULT(no)
- else
-     if test "$ac_cv_ctime_args" = 2; then
-         AC_DEFINE(HAVE_CTIME_R_2,1,[Define if ctime_r is present with 2 parameters.])
-     elif test "$ac_cv_ctime_args" = 3; then
-         AC_DEFINE(HAVE_CTIME_R_3,1,[Define if ctime_r is present with 3 parameters.])
-     fi
-     AC_MSG_RESULT([yes, and it takes $ac_cv_ctime_args arguments])
- fi 
+    AC_COMPILE_IFELSE(
+        [AC_LANG_PROGRAM([[#include <time.h>]], [[time_t clock; char buf[26]; ctime_r(&clock, buf, 26);]])],
+        [ac_cv_ctime_args=3],[])
+fi
+if test -z "$ac_cv_ctime_args"; then
+    AC_MSG_RESULT(no)
+else
+    if test "$ac_cv_ctime_args" = 2; then
+        AC_DEFINE([HAVE_CTIME_R_2],[1],[Define if ctime_r is present with 2 parameters.])
+    elif test "$ac_cv_ctime_args" = 3; then
+        AC_DEFINE([HAVE_CTIME_R_3],[1],[Define if ctime_r is present with 3 parameters.])
+    fi
+    AC_MSG_RESULT([yes, and it takes $ac_cv_ctime_args arguments])
+fi 
 
 # log4shib settings (favor this version over the log4cpp code)
 AC_PATH_PROG(LOG4SHIB_CONFIG,log4shib-config)
 AC_ARG_WITH(log4shib,
-    AC_HELP_STRING([--with-log4shib=PATH], [where log4shib-config is installed]),
+    AS_HELP_STRING([--with-log4shib=PATH],[where log4shib-config is installed]),
     [
     LOG4SHIB_CONFIG="${with_log4shib}"
-    if ! test -f "${LOG4SHIB_CONFIG}" ; then
-    	LOG4SHIB_CONFIG="${with_log4shib}/bin/log4shib-config"
+    if ! test -f "${LOG4SHIB_CONFIG}"; then
+        LOG4SHIB_CONFIG="${with_log4shib}/bin/log4shib-config"
     fi
     ])
-if test -f "${LOG4SHIB_CONFIG}"; then
-    LDFLAGS="`${LOG4SHIB_CONFIG} --libs` $LDFLAGS"
+if test -f "${LOG4SHIB_CONFIG}" ; then
+    LIBS="`${LOG4SHIB_CONFIG} --libs` $LIBS"
     CPPFLAGS="`${LOG4SHIB_CONFIG} --cflags` $CPPFLAGS"
-	AC_CHECK_HEADER([log4shib/CategoryStream.hh],,AC_MSG_ERROR([unable to find log4shib header files]))
-	AC_TRY_LINK(
-		[#include <log4shib/Category.hh>
-#include <log4shib/CategoryStream.hh>],
-		[log4shib::Category::getInstance("foo").errorStream() << log4shib::eol],
-		[AC_DEFINE(SHIBSP_LOG4SHIB,1,[Define if log4shib library is used.])],
-		[AC_MSG_ERROR([unable to link with log4shib])])
+    AC_CHECK_HEADER([log4shib/CategoryStream.hh],,AC_MSG_ERROR([unable to find log4shib header files]))
+    AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM([[#include <log4shib/Category.hh>
+#include <log4shib/CategoryStream.hh>]],
+            [[log4shib::Category::getInstance("foo").errorStream() << log4shib::eol]])],
+        [AC_DEFINE([SHIBSP_LOG4SHIB],[1],[Define to 1 if log4shib library is used.])],
+        [AC_MSG_ERROR([unable to link with log4shib])])
 else
     AC_MSG_WARN([log4shib-config not found, may need to use --with-log4shib option])
     AC_MSG_WARN([will look for original log4cpp library])
     
-	# log4cpp settings
-	AC_PATH_PROG(LOG4CPP_CONFIG,log4cpp-config)
-	AC_ARG_WITH(log4cpp,
-	    AC_HELP_STRING([--with-log4cpp=PATH], [where log4cpp-config is installed]),
-	    [
-	    LOG4CPP_CONFIG="${with_log4cpp}"
-	    if ! test -f "${LOG4CPP_CONFIG}" ; then
-	    	LOG4CPP_CONFIG="${with_log4cpp}/bin/log4cpp-config"
-	    fi
-	    ])
-	if test -f "${LOG4CPP_CONFIG}"; then
-		AC_MSG_WARN([will try to use log4cpp, note that most non-Internet2 supplied versions are not thread-safe])
-	    LDFLAGS="`${LOG4CPP_CONFIG} --libs` $LDFLAGS"
-	    CPPFLAGS="`${LOG4CPP_CONFIG} --cflags` $CPPFLAGS"
-		AC_CHECK_HEADER([log4cpp/CategoryStream.hh],,AC_MSG_ERROR([unable to find log4cpp header files]))
-		AC_TRY_LINK(
-			[#include <log4cpp/Category.hh>
-#include <log4cpp/CategoryStream.hh>],
-			[log4cpp::Category::getInstance("foo").errorStream() << log4cpp::eol],
-			[AC_DEFINE(SHIBSP_LOG4CPP,1,[Define if log4cpp library is used.])],
-			[AC_MSG_ERROR([unable to link with log4cpp, need version 1.0 or later])])
-	else
-	    AC_MSG_ERROR([log4cpp-config not found, may need to use --with-log4cpp option])
-	fi
+    # log4cpp settings
+    AC_PATH_PROG(LOG4CPP_CONFIG,log4cpp-config)
+    AC_ARG_WITH(log4cpp,
+        AS_HELP_STRING([--with-log4cpp=PATH],[where log4cpp-config is installed]),
+        [
+        LOG4CPP_CONFIG="${with_log4cpp}"
+        if ! test -f "${LOG4CPP_CONFIG}"; then
+            LOG4CPP_CONFIG="${with_log4cpp}/bin/log4cpp-config"
+        fi
+        ])
+    if test -f "${LOG4CPP_CONFIG}"; then
+        AC_MSG_WARN([will try to use log4cpp, note that most non-Internet2 supplied versions are not thread-safe])
+        LIBS="`${LOG4CPP_CONFIG} --libs` $LIBS"
+        CPPFLAGS="`${LOG4CPP_CONFIG} --cflags` $CPPFLAGS"
+        AC_CHECK_HEADER([log4cpp/CategoryStream.hh],,AC_MSG_ERROR([unable to find log4cpp header files]))
+        AC_LINK_IFELSE(
+            [AC_LANG_PROGRAM([[#include <log4cpp/Category.hh>
+#include <log4cpp/CategoryStream.hh>]],
+                [[log4cpp::Category::getInstance("foo").errorStream() << log4cpp::eol]])],
+            [AC_DEFINE([SHIBSP_LOG4CPP],[1],[Define to 1 if log4cpp library is used.])],
+            [AC_MSG_ERROR([unable to link with log4cpp, need version 1.0 or later])])
+    else
+        AC_MSG_ERROR([log4cpp-config not found, may need to use --with-log4cpp option])
+    fi
 fi
 
 # Xerces settings
-AC_ARG_WITH(xerces, 
-            AC_HELP_STRING([--with-xerces=PATH], [where xerces-c is installed]),
-            [if test x_$with_xerces != x_/usr; then
-                LDFLAGS="-L${with_xerces}/lib $LDFLAGS"
-                CPPFLAGS="-I${with_xerces}/include $CPPFLAGS"
-            fi])
+AC_ARG_WITH(xerces,
+    AS_HELP_STRING([--with-xerces=PATH],[where xerces-c is installed]),
+    [if test x_$with_xerces != x_/usr; then
+        LDFLAGS="-L${with_xerces}/lib $LDFLAGS"
+        CPPFLAGS="-I${with_xerces}/include $CPPFLAGS"
+    fi])
 LIBS="-lxerces-c $LIBS"
-AC_CHECK_HEADER([xercesc/dom/DOM.hpp],,
-                AC_MSG_ERROR([unable to find xerces header files]))
+AC_CHECK_HEADER([xercesc/dom/DOM.hpp],,AC_MSG_ERROR([unable to find xerces header files]))
 AC_MSG_CHECKING([Xerces version])
 AC_PREPROC_IFELSE(
     [AC_LANG_PROGRAM([#include <xercesc/util/XercesVersion.hpp>],
-[#if  _XERCES_VERSION != 20600
+[#if  _XERCES_VERSION >= 20700
 int i = 0;
 #else
-#error cannot use version 2.6.0
+#error version 2.7.0 or above required
 #endif])],
     [AC_MSG_RESULT(OK)],
-    [AC_MSG_FAILURE([Xerces-C v2.6.0 has bugs that inhibit use with signed XML, please use a newer version])])
-AC_TRY_LINK(
-        [#include <xercesc/util/PlatformUtils.hpp>],
-        [xercesc::XMLPlatformUtils::Initialize()],
-        [AC_DEFINE(HAVE_LIBXERCESC,1,[Define if Xerces-C library was found])],
-        [AC_MSG_ERROR([unable to link with Xerces])])
+    [AC_MSG_FAILURE([Xerces-C v2.7.0 or higher is required, v3.x preferred])])
+AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([[#include <xercesc/util/PlatformUtils.hpp>]],[[xercesc::XMLPlatformUtils::Initialize()]])],
+    ,[AC_MSG_ERROR([unable to link with Xerces])])
 
 AC_MSG_CHECKING([whether Xerces XMLString::release(XMLByte**) exists])
-AC_TRY_COMPILE([#include <xercesc/util/XMLString.hpp>],
-    [using namespace XERCES_CPP_NAMESPACE;
-      XMLByte* buf=NULL;
-      XMLString::release(&buf);
-    ],
-    [AC_MSG_RESULT([yes])]
-    [AC_DEFINE([SHIBSP_XERCESC_HAS_XMLBYTE_RELEASE], [1], [Define to 1 if Xerces XMLString includes XMLByte release.])],
+AC_COMPILE_IFELSE(
+    [AC_LANG_PROGRAM([[#include <xercesc/util/XMLString.hpp>]],
+    [[using namespace XERCES_CPP_NAMESPACE; XMLByte* buf=NULL; XMLString::release(&buf);]])],
+    [AC_MSG_RESULT([yes])AC_DEFINE([SHIBSP_XERCESC_HAS_XMLBYTE_RELEASE],[1],[Define to 1 if Xerces XMLString includes XMLByte release.])],
     [AC_MSG_RESULT([no])])
 
 AC_MSG_CHECKING([whether Xerces DOMNodeFilter API returns a short])
-AC_TRY_COMPILE([#include <xercesc/dom/DOM.hpp>],
-    [using namespace XERCES_CPP_NAMESPACE;
+AC_COMPILE_IFELSE(
+    [AC_LANG_PROGRAM([[#include <xercesc/dom/DOM.hpp>]],
+        [[using namespace XERCES_CPP_NAMESPACE;
       class Blocker : public DOMNodeFilter {
       public:
         short acceptNode(const DOMNode* node) const {
@@ -242,33 +229,74 @@ AC_TRY_COMPILE([#include <xercesc/dom/DOM.hpp>],
         }
       };
       static Blocker g_Blocker;
-    ],
-    [AC_MSG_RESULT([yes])]
-    [AC_DEFINE([SHIBSP_XERCESC_SHORT_ACCEPTNODE], [1], [Define to 1 if Xerces DOMNodeFilter API returns a short.])],
+    ]])],
+    [AC_MSG_RESULT([yes])AC_DEFINE([SHIBSP_XERCESC_SHORT_ACCEPTNODE],[1],[Define to 1 if Xerces DOMNodeFilter API returns a short.])],
     [AC_MSG_RESULT([no])])
+
+# XML-Security settings
+AC_ARG_WITH(xmlsec,
+    AS_HELP_STRING([--with-xmlsec=PATH],[where xmlsec is installed]),,
+    [with_xmlsec=/usr])
+
+if test x_$with_xmlsec != x_/usr; then
+    LDFLAGS="-L${with_xmlsec}/lib $LDFLAGS"
+    CPPFLAGS="-I${with_xmlsec}/include $CPPFLAGS"
+fi        
+XMLSEC_LIBS="-lxml-security-c $XMLSEC_LIBS"
+
+# save and append master libs
+save_LIBS="$LIBS"
+LIBS="$XMLSEC_LIBS $LIBS"
+
+AC_CHECK_HEADER([xsec/utils/XSECPlatformUtils.hpp],,AC_MSG_ERROR([unable to find XML-Security-C header files]))
+AC_MSG_CHECKING([XML-Security-C version])
+AC_PREPROC_IFELSE(
+    [AC_LANG_PROGRAM([#include <xsec/utils/XSECPlatformUtils.hpp>],
+    [#if XSEC_VERSION_MAJOR > 1 || (XSEC_VERSION_MAJOR == 1 && XSEC_VERSION_MEDIUM > 3)
+int i = 0;
+#else
+#error need version 1.4.0 or later
+#endif])],
+    [AC_MSG_RESULT(OK)],
+    [AC_MSG_FAILURE([XML-Security-C version 1.4.0 or greater is required.])])
+AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([[#include <xsec/utils/XSECPlatformUtils.hpp>]],
+        [[XSECPlatformUtils::Initialise()]])],,
+    [AC_MSG_ERROR([unable to link with XML-Security])])
+
+AC_MSG_CHECKING([whether XML-Security-C supports white/blacklisting of algorithms])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <xsec/framework/XSECAlgorithmMapper.hpp>]], [[XSECAlgorithmMapper* mapper; mapper->whitelistAlgorithm(NULL);]])],[AC_MSG_RESULT([yes])
+      AC_DEFINE([SHIBSP_XMLSEC_WHITELISTING],[1],[Define to 1 if XML-Security-C supports white/blacklisting algorithms.])],[AC_MSG_RESULT([no])])
+
+# restore master libs
+LIBS="$save_LIBS"
 
 #XML-Tooling settings
 AC_ARG_WITH(xmltooling,
-            AC_HELP_STRING([--with-xmltooling=PATH], [where xmltooling-c is installed]),
-            [if test x_$with_xmltooling != x_/usr; then
-                LDFLAGS="-L${with_xmltooling}/lib $LDFLAGS"
-                CPPFLAGS="-I${with_xmltooling}/include $CPPFLAGS"
-            fi])
+    AS_HELP_STRING([--with-xmltooling=PATH],[where xmltooling is installed]),
+    [if test x_$with_xmltooling != x_/usr; then
+        LDFLAGS="-L${with_xmltooling}/lib $LDFLAGS"
+        CPPFLAGS="-I${with_xmltooling}/include $CPPFLAGS"
+        DX_INCLUDE="${with_xmltooling}/include"
+    fi])
 LITE_LIBS="-lxmltooling-lite"
-XMLSEC_LIBS="-lxmltooling"
-AC_CHECK_HEADER([xmltooling/base.h],,
-                AC_MSG_ERROR([unable to find xmltooling header files]))
+XMLSEC_LIBS="-lxmltooling $XMLSEC_LIBS"
+AC_CHECK_HEADER([xmltooling/base.h],,AC_MSG_ERROR([unable to find xmltooling header files]))
                 
 
 # save and append master libs
 save_LIBS="$LIBS"
 LIBS="$XMLSEC_LIBS $LIBS"
 
-AC_TRY_LINK(
-    [#include <xmltooling/io/HTTPResponse.h>],
-    [xmltooling::HTTPResponse::sanitizeURL("http://test")],
-    [AC_DEFINE(HAVE_XMLTOOLING,1,[Define if xmltooling library was found])],
-    [AC_MSG_ERROR([unable to link with XMLTooling, or version was too old])])
+AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([[#include <xmltooling/XMLToolingConfig.h>
+#include <xmltooling/version.h>]],
+        [[#if _XMLTOOLING_VERSION >= 10400
+xmltooling::XMLToolingConfig::getConfig();
+#else
+#error Need XMLTooling version 1.4 or higher
+#endif]])],
+    ,[AC_MSG_ERROR([unable to link with XMLTooling, or version was too old])])
 
 # restore master libs
 LIBS="$save_LIBS"
@@ -291,46 +319,13 @@ fi
 XMLTOOLINGXMLDIR="$XMLTOOLINGXMLDIR/share/xml/xmltooling"
 AC_SUBST(XMLTOOLINGXMLDIR)
 
-# XML-Security settings
-AC_ARG_WITH(xmlsec,
-            AC_HELP_STRING([--with-xmlsec=PATH], [where xmlsec is installed]),,
-            [with_xmlsec=/usr])
-
-if test x_$with_xmlsec != x_/usr; then
-    LDFLAGS="-L${with_xmlsec}/lib $LDFLAGS"
-    CPPFLAGS="-I${with_xmlsec}/include $CPPFLAGS"
-fi        
-XMLSEC_LIBS="-lxml-security-c $XMLSEC_LIBS"
-
-# save and append master libs
-save_LIBS="$LIBS"
-LIBS="$XMLSEC_LIBS $LIBS"
-
-AC_CHECK_HEADER([xsec/utils/XSECPlatformUtils.hpp],,AC_MSG_ERROR([unable to find XML-Security header files]))
-AC_MSG_CHECKING([XML-Security version])
-AC_PREPROC_IFELSE(
-    [AC_LANG_PROGRAM([#include <xsec/utils/XSECPlatformUtils.hpp>],
-    [#if XSEC_VERSION_MAJOR > 1 || (XSEC_VERSION_MAJOR == 1 && XSEC_VERSION_MEDIUM > 3)
-int i = 0;
-#else
-#error need version 1.4.0 or later
-#endif])],
-    [AC_MSG_RESULT(OK)],
-    [AC_MSG_FAILURE([XML-Security version 1.4.0 or greater is required.])])
-AC_TRY_LINK(
-        [#include <xsec/utils/XSECPlatformUtils.hpp>],
-        [XSECPlatformUtils::Initialise()],,
-        [AC_MSG_ERROR([unable to link with XML-Security])])
-
-# restore master libs
-LIBS="$save_LIBS"
-
 # OpenSAML settings
 AC_ARG_WITH(saml,
-    AC_HELP_STRING([--with-saml=PATH], [where saml is installed]),
+    AS_HELP_STRING([--with-saml=PATH],[where saml is installed]),
     [if test x_$with_saml != x_/usr; then
         LDFLAGS="-L${with_saml}/lib $LDFLAGS"
         CPPFLAGS="-I${with_saml}/include $CPPFLAGS"
+        DX_INCLUDE="$DX_INCLUDE ${with_saml}/include"
     fi])
 XMLSEC_LIBS="-lsaml $XMLSEC_LIBS"
 
@@ -338,18 +333,17 @@ XMLSEC_LIBS="-lsaml $XMLSEC_LIBS"
 save_LIBS="$LIBS"
 LIBS="$XMLSEC_LIBS $LIBS"
 
-AC_CHECK_HEADER([saml/saml2/metadata/Metadata.h],,
-                AC_MSG_ERROR([unable to find OpenSAML header files]))
-AC_TRY_LINK(
-	[#include <saml/SAMLConfig.h>
-#include <saml/version.h>],
-	[#if _OPENSAML_VERSION >= 20200
+AC_CHECK_HEADER([saml/saml2/metadata/Metadata.h],,AC_MSG_ERROR([unable to find OpenSAML header files]))
+AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([[#include <saml/SAMLConfig.h>
+#include <saml/version.h>]],
+[[#if _OPENSAML_VERSION >= 20400
 opensaml::SAMLConfig::getConfig();
 #else
-#error Need OpenSAML version 2.2 or higher
-#endif],
-        [AC_DEFINE(HAVE_SAML,1,[Define if saml library was found])],
-        [AC_MSG_ERROR([unable to link with OpenSAML, or version was too old])])
+#error Need OpenSAML version 2.4 or higher
+#endif]])],
+    ,[AC_MSG_ERROR([unable to link with OpenSAML, or version was too old])
+	])
 
 # restore master libs
 LIBS="$save_LIBS"
@@ -377,8 +371,6 @@ AC_SUBST(OPENSAMLXMLDIR)
 AC_SUBST(LITE_LIBS)
 AC_SUBST(XMLSEC_LIBS)
 
-AC_CONFIG_FILES([shibboleth.spec pkginfo Portfile])
-
 # output the underlying makefiles
 WANT_SUBDIRS="doc schemas configs shibsp shibd util"
 AC_CONFIG_FILES([Makefile doc/Makefile schemas/Makefile \
@@ -388,17 +380,17 @@ AC_CONFIG_FILES([Makefile doc/Makefile schemas/Makefile \
 ## ADFS?
 AC_CONFIG_FILES([adfs/Makefile])
 AC_ARG_ENABLE([adfs],
-	AC_HELP_STRING([--disable-adfs], [don't build the ADFS module]),
-	[adfs_enabled=$enableval], [adfs_enabled=yes])
+    AS_HELP_STRING([--disable-adfs],[don't build the ADFS module]),
+    [adfs_enabled=$enableval], [adfs_enabled=yes])
 if test "x$adfs_enabled" = "x" ; then
-   adfs_enabled=yes
+    adfs_enabled=yes
 fi
 AC_MSG_CHECKING(whether to build the ADFS module)
 if test "$adfs_enabled" = "no" ; then
-   AC_MSG_RESULT(no)
+    AC_MSG_RESULT(no)
 else
-   AC_MSG_RESULT(yes)
-   WANT_SUBDIRS="$WANT_SUBDIRS adfs"
+    AC_MSG_RESULT(yes)
+    WANT_SUBDIRS="$WANT_SUBDIRS adfs"
 fi
 
 
@@ -407,13 +399,13 @@ fi
 #
 AC_MSG_CHECKING(for NSAPI module option)
 AC_ARG_WITH(nsapi,
-	AC_HELP_STRING([--with-nsapi=DIR], [Build NSAPI module for Netscape/iPlanet/SunONE]),
-	[WANT_NSAPI=$withval],[WANT_NSAPI=no])
+    AS_HELP_STRING([--with-nsapi=DIR],[Build NSAPI module for Netscape/iPlanet/SunONE]),
+    [WANT_NSAPI=$withval],[WANT_NSAPI=no])
 AC_MSG_RESULT($WANT_NSAPI)
 
 if test "$WANT_NSAPI" != "no"; then
   if test ! -d $WANT_NSAPI/bin ; then
-    AC_MSG_ERROR(Please specify the path to the root of your Netscape/iPlanet/SunONE server using --with-nsapi=DIR)
+    AC_MSG_ERROR([Please specify the path to the root of your Netscape/iPlanet/SunONE server using --with-nsapi=DIR])
   fi
   AC_MSG_CHECKING(for NSAPI include files)
   if test -d $WANT_NSAPI/include ; then
@@ -430,7 +422,7 @@ if test "$WANT_NSAPI" != "no"; then
     NSAPI_INCLUDE="$NSAPI_INC_DIR -I$NSAPI_INCLUDE"
   fi
   if test "$NSAPI_INCLUDE" = ""; then
-    AC_MSG_ERROR(Please check you have nsapi.h in either $WANT_NSAPI/include or $WANT_NSAPI/plugins/include)
+    AC_MSG_ERROR([Please check you have nsapi.h in either $WANT_NSAPI/include or $WANT_NSAPI/plugins/include])
   fi
 fi
 
@@ -451,7 +443,7 @@ fi
 #
 AC_MSG_CHECKING(for FastCGI support)
 AC_ARG_WITH(fastcgi,
-    AC_HELP_STRING([--with-fastcgi=DIR], [Build FastCGI support]),
+    AS_HELP_STRING([--with-fastcgi=DIR],[Build FastCGI support]),
     [WANT_FASTCGI=$withval],[WANT_FASTCGI=no])
 AC_MSG_RESULT($WANT_FASTCGI)
 
@@ -462,8 +454,7 @@ if test "$WANT_FASTCGI" != "no"; then
             FASTCGI_LDFLAGS="-L$WANT_FASTCGI/lib"
         fi
     fi
-    AC_CHECK_HEADER([fcgio.h],,
-        AC_MSG_ERROR([unable to find FastCGI header files]))
+    AC_CHECK_HEADER([fcgio.h],,AC_MSG_ERROR([unable to find FastCGI header files]))
     FASTCGI_LIBS="-lfcgi -lfcgi++"
 fi
 
@@ -484,7 +475,7 @@ fi
 #
 AC_MSG_CHECKING(for Memcached support)
 AC_ARG_WITH(memcached,
-    AC_HELP_STRING([--with-memcached=DIR], [Build Memcached support]),
+    AS_HELP_STRING([--with-memcached=DIR],[Build Memcached support]),
     [WANT_MEMCACHED=$withval],[WANT_MEMCACHED=no])
 AC_MSG_RESULT($WANT_MEMCACHED)
 
@@ -574,12 +565,12 @@ fi
 #   --with-apxs      (DSO build, the normal way, uses apxs to derive build flags)
 
 AC_ARG_ENABLE(apache-13,
-	AC_HELP_STRING([--enable-apache-13], [enable the Apache 1.3 module]),
-	[ if test "x$enableval" = "x" ; then
-              WANT_APACHE_13=yes
-	  else
-	      WANT_APACHE_13="$enableval"
-	  fi
+	AS_HELP_STRING([--enable-apache-13],[enable the Apache 1.3 module]),
+	[if test "x$enableval" = "x" ; then
+         WANT_APACHE_13=yes
+	 else
+	     WANT_APACHE_13="$enableval"
+	 fi
 	],[ WANT_APACHE_13=no ])
 AC_MSG_CHECKING(whether to build Apache 1.3 module)
 if test "$WANT_APACHE_13" != yes && test "$WANT_APACHE_13" != no ; then
@@ -589,7 +580,7 @@ AC_MSG_RESULT($WANT_APACHE_13)
 
 if test "$WANT_APACHE_13" = "yes" ; then
     AC_ARG_WITH(apxs, 
-        AC_HELP_STRING([--with-apxs=FILE], [Specifies where to find the Apache 1.3 apxs script.]),
+        AS_HELP_STRING([--with-apxs=FILE],[Specifies where to find the Apache 1.3 apxs script.]),
         [
         AC_MSG_CHECKING(for user-specified apxs name/location)
         if test "$withval" != "no" ; then
@@ -635,22 +626,22 @@ AC_SUBST(APXS_INCLUDE)
 #   --with-apu        (DSO build, APR-UTIL development package installed separately)
 
 AC_ARG_ENABLE(apache-20,
-	AC_HELP_STRING([--enable-apache-20], [enable the Apache 2.0 module]),
-	[ if test "x$enableval" = "x" ; then
-              WANT_APACHE_20=yes
-	  else
-	      WANT_APACHE_20="$enableval"
-	  fi
+	AS_HELP_STRING([--enable-apache-20],[enable the Apache 2.0 module]),
+	[if test "x$enableval" = "x" ; then
+         WANT_APACHE_20=yes
+	 else
+	     WANT_APACHE_20="$enableval"
+	 fi
 	],[ WANT_APACHE_20=no ])
 AC_MSG_CHECKING(whether to build Apache 2.0 module)
 if test "$WANT_APACHE_20" != yes && test "$WANT_APACHE_20" != no ; then
-   WANT_APACHE_20=yes
+    WANT_APACHE_20=yes
 fi
 AC_MSG_RESULT($WANT_APACHE_20)
 
 if test "$WANT_APACHE_20" = "yes" ; then
     AC_ARG_WITH(apxs2, 
-        AC_HELP_STRING([--with-apxs2=FILE], [Specifies where to find the Apache 2.0 apxs script.]),
+        AS_HELP_STRING([--with-apxs2=FILE],[Specifies where to find the Apache 2.0 apxs script.]),
         [
         AC_MSG_CHECKING(for user-specified Apache2 apxs name/location)
         if test "$withval" != "no" ; then
@@ -691,7 +682,7 @@ if test "$WANT_APACHE_20" = "yes" ; then
 
     # APR settings
     AC_ARG_WITH(apr, 
-        AC_HELP_STRING([--with-apr=PATH], [where apr-config is installed]),
+        AS_HELP_STRING([--with-apr=PATH],[where apr-config is installed]),
         [
         AC_MSG_CHECKING(for user-specified apr-config name/location)
         if test "$withval" != "no" ; then
@@ -712,7 +703,7 @@ if test "$WANT_APACHE_20" = "yes" ; then
 
     # APU settings
     AC_ARG_WITH(apu, 
-        AC_HELP_STRING([--with-apu=PATH], [where apu-config is installed]),
+        AS_HELP_STRING([--with-apu=PATH],[where apu-config is installed]),
         [
         AC_MSG_CHECKING(for user-specified apu-config name/location)
         if test "$withval" != "no" ; then
@@ -733,7 +724,7 @@ if test "$WANT_APACHE_20" = "yes" ; then
 
     # extract settings we need from APXS2 -q
     APXS2_CC="`$APXS2 -q CC`"
-    APXS2_CFLAGS="`$APXS2 -q CPPFLAGS` `$APXS2 -q CFLAGS` $APU_CFLAGS"
+    APXS2_CFLAGS="`$APXS2 -q CPPFLAGS` `$APXS2 -q CFLAGS` $APR_CFLAGS $APU_CFLAGS"
     APXS2_INCLUDE="`$APXS2 -q INCLUDEDIR`"
 fi
 
@@ -748,22 +739,22 @@ AC_SUBST(APXS2_INCLUDE)
 #   --with-apu1       (DSO build, APR-UTIL development package installed separately)
 
 AC_ARG_ENABLE(apache-22,
-	AC_HELP_STRING([--enable-apache-22], [enable the Apache 2.2 module]),
-	[ if test "x$enableval" = "x" ; then
-              WANT_APACHE_22=yes
-	  else
-	      WANT_APACHE_22="$enableval"
-	  fi
+	AS_HELP_STRING([--enable-apache-22],[enable the Apache 2.2 module]),
+	[if test "x$enableval" = "x" ; then
+         WANT_APACHE_22=yes
+	 else
+	     WANT_APACHE_22="$enableval"
+	 fi
 	],[ WANT_APACHE_22=no ])
 AC_MSG_CHECKING(whether to build Apache 2.2 module)
 if test "$WANT_APACHE_22" != yes && test "$WANT_APACHE_22" != no ; then
-   WANT_APACHE_22=yes
+    WANT_APACHE_22=yes
 fi
 AC_MSG_RESULT($WANT_APACHE_22)
 
 if test "$WANT_APACHE_22" = "yes" ; then
     AC_ARG_WITH(apxs22, 
-        AC_HELP_STRING([--with-apxs22=FILE], [Specifies where to find the Apache 2.2 apxs script.]),
+        AS_HELP_STRING([--with-apxs22=FILE],[Specifies where to find the Apache 2.2 apxs script.]),
         [
         AC_MSG_CHECKING(for user-specified Apache2.2 apxs name/location)
         if test "$withval" != "no" ; then
@@ -804,7 +795,7 @@ if test "$WANT_APACHE_22" = "yes" ; then
 
     # APR1 settings
     AC_ARG_WITH(apr1, 
-        AC_HELP_STRING([--with-apr1=PATH], [where apr-1-config is installed]),
+        AS_HELP_STRING([--with-apr1=PATH],[where apr-1-config is installed]),
         [
         AC_MSG_CHECKING(for user-specified apr-1-config name/location)
         if test "$withval" != "no" ; then
@@ -825,12 +816,12 @@ if test "$WANT_APACHE_22" = "yes" ; then
 
     # APU1 settings
     AC_ARG_WITH(apu1, 
-        AC_HELP_STRING([--with-apu1=PATH], [where apu-1-config is installed]),
+        AS_HELP_STRING([--with-apu1=PATH],[where apu-1-config is installed]),
         [
         AC_MSG_CHECKING(for user-specified apu-1-config name/location)
         if test "$withval" != "no" ; then
             if test "$withval" != "yes"; then
-                APR1_CONFIG=$withval
+                APU1_CONFIG=$withval
                 AC_MSG_RESULT("$withval")
             fi
         fi
@@ -877,40 +868,39 @@ AC_CONFIG_FILES([odbc-store/Makefile])
 
 # determine whether we should enable the odbc ccache
 AC_ARG_ENABLE([odbc],
-	AC_HELP_STRING([--disable-odbc], [disable the ODBC Storage Service]),
+	AS_HELP_STRING([--disable-odbc],[disable the ODBC Storage Service]),
 	[odbc_enabled=$enableval], [odbc_enabled=default])
-
 if test "x$odbc_enabled" = "x" ; then
-   odbc_enabled=yes
+    odbc_enabled=yes
 fi
 
 # Are we trying to build ODBC?
 AC_MSG_CHECKING(whether to build the ODBC storage service)
 if test "$odbc_enabled" = "yes" ; then
-   build_odbc=yes
-   AC_MSG_RESULT(yes)
+    build_odbc=yes
+    AC_MSG_RESULT(yes)
 elif test "$odbc_enabled" = "default" ; then
-   build_odbc=yes
-   AC_MSG_RESULT([yes, if it can be found])
+    build_odbc=yes
+    AC_MSG_RESULT([yes, if it can be found])
 else
-   build_odbc=no
-   AC_MSG_RESULT(no)
+    build_odbc=no
+    AC_MSG_RESULT(no)
 fi
 
 # If we're trying to build ODBC, try to find the odbc_config program.
 if test "$build_odbc" = "yes" ; then
-   odbc_dir=""
-   AC_ARG_WITH(odbc,
-	AC_HELP_STRING([--with-odbc=PATH], [directory where odbc is installed]),
+    odbc_dir=""
+    AC_ARG_WITH(odbc,
+	   AS_HELP_STRING([--with-odbc=PATH],[directory where odbc is installed]),
 	    [if test "$with_odbc" = no ; then
-               AC_MSG_ERROR([Try running --disable-odbc instead.])
-             elif test "$with_odbc" != yes ; then
-               odbc_dir="$with_odbc/bin"
-               if test "$with_odbc" != /usr ; then
-                 ODBC_CFLAGS="-I$with_odbc/include"
-                 ODBC_LIBS="-L$with_odbc/lib"
-               fi
-             fi ])
+            AC_MSG_ERROR([Try running --disable-odbc instead.])
+         elif test "$with_odbc" != yes ; then
+            odbc_dir="$with_odbc/bin"
+            if test "$with_odbc" != /usr ; then
+                ODBC_CFLAGS="-I$with_odbc/include"
+                ODBC_LIBS="-L$with_odbc/lib"
+            fi
+         fi])
 
    AC_PATH_PROG(ODBC_CONFIG, odbc_config, no, $odbc_dir $PATH )
    if test "$ODBC_CONFIG" = no ; then
@@ -933,20 +923,18 @@ if test "$build_odbc" = "yes" ; then
       save_LIBS="$LIBS"
       LIBS="$LIBS $ODBC_LIBS"
       AC_MSG_CHECKING(if we can link againt ODBC)
-      AC_TRY_LINK(
-        [#include <sql.h>
-         #include <sqlext.h>
-         #include <stdio.h>],
-        [SQLSetEnvAttr(SQL_NULL_HANDLE, SQL_ATTR_CONNECTION_POOLING, (void*)SQL_CP_ONE_PER_HENV, 0)],
-        [have_odbc_libs=yes],
-        [have_odbc_libs=no])
+      AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM([[#include <sql.h>
+ #include <sqlext.h>
+ #include <stdio.h>]],
+            [[SQLSetEnvAttr(SQL_NULL_HANDLE, SQL_ATTR_CONNECTION_POOLING, (void*)SQL_CP_ONE_PER_HENV, 0)]])],
+        [have_odbc_libs=yes],[have_odbc_libs=no])
       LIBS="$save_LIBS"
-
       if test "$have_odbc_libs" = no ; then
          if test "$odbc_enabled" = "yes" ; then
             AC_MSG_ERROR([unable to link with ODBC Library])
          else
-            AC_MSG_RESULT(no, skipping ODBC)
+            AC_MSG_RESULT([no, skipping ODBC])
          fi
       fi
    fi
@@ -961,6 +949,142 @@ if test "$have_odbc_libs" = yes ; then
    WANT_SUBDIRS="$WANT_SUBDIRS odbc-store"
    AC_SUBST(ODBC_CFLAGS)
    AC_SUBST(ODBC_LIBS)
+fi
+
+# GSS-API checking
+
+GSSAPI_ROOT="/usr"
+AC_ARG_WITH(gssapi-includes,
+  AS_HELP_STRING([--with-gssapi-includes=DIR],[Specify location of GSSAPI header]),
+  [ GSSAPI_INCS="-I$withval"
+    want_gss="yes" ]
+)
+
+AC_ARG_WITH(gssapi-libs,
+  AS_HELP_STRING([--with-gssapi-libs=DIR],[Specify location of GSSAPI libs]),
+  [ GSSAPI_LIB_DIR="-L$withval"
+    want_gss="yes" ]
+)
+
+AC_ARG_WITH(gssapi,
+  AS_HELP_STRING([--with-gssapi=DIR],[Where to look for GSSAPI]),
+  [ GSSAPI_ROOT="$withval"
+  if test x"$GSSAPI_ROOT" != xno; then
+    want_gss="yes"
+    if test x"$GSSAPI_ROOT" = xyes; then
+      dnl if yes, then use default root
+      GSSAPI_ROOT="/usr"
+    fi
+  fi
+])
+
+save_CPPFLAGS="$CPPFLAGS"
+AC_MSG_CHECKING([if GSSAPI support is requested])
+if test x"$want_gss" = xyes; then
+  AC_MSG_RESULT(yes)
+
+  if test -z "$GSSAPI_INCS"; then
+     if test -f "$GSSAPI_ROOT/bin/krb5-config"; then
+        GSSAPI_INCS=`$GSSAPI_ROOT/bin/krb5-config --cflags gssapi`
+     elif test "$GSSAPI_ROOT" != "yes"; then
+        GSSAPI_INCS="-I$GSSAPI_ROOT/include"
+     fi
+  fi
+
+  CPPFLAGS="$CPPFLAGS $GSSAPI_INCS"
+
+  AC_CHECK_HEADER(gss.h,
+    [
+      dnl found in the given dirs
+      AC_DEFINE([HAVE_GSSGNU],[1],[if you have the GNU gssapi libraries])
+      gnu_gss=yes
+    ],
+    [
+      dnl not found, check Heimdal or MIT
+      AC_CHECK_HEADERS([gssapi/gssapi.h], [], [not_mit=1])
+      AC_CHECK_HEADERS(
+        [gssapi/gssapi_generic.h gssapi/gssapi_krb5.h],
+        [],
+        [not_mit=1],
+        [
+AC_INCLUDES_DEFAULT
+#ifdef HAVE_GSSAPI_GSSAPI_H
+#include <gssapi/gssapi.h>
+#endif
+        ])
+      if test "x$not_mit" = "x1"; then
+        dnl MIT not found, check for Heimdal
+        AC_CHECK_HEADER([gssapi.h],
+            [
+              dnl found
+              AC_DEFINE([HAVE_GSSHEIMDAL],[1],[if you have the Heimdal gssapi libraries])
+            ],
+            [
+              dnl no header found, disabling GSS
+              want_gss=no
+              AC_MSG_WARN([disabling GSSAPI since no header files was found])
+            ]
+          )
+      else
+        dnl MIT found
+        AC_DEFINE([HAVE_GSSMIT],[1],[if you have the MIT gssapi libraries])
+        dnl check if we have a really old MIT kerberos (<= 1.2)
+        AC_MSG_CHECKING([if gssapi headers declare GSS_C_NT_HOSTBASED_SERVICE])
+        AC_COMPILE_IFELSE([
+          AC_LANG_PROGRAM([[
+#include <gssapi/gssapi.h>
+#include <gssapi/gssapi_generic.h>
+#include <gssapi/gssapi_krb5.h>
+          ]],[[
+            gss_import_name(
+                            (OM_uint32 *)0,
+                            (gss_buffer_t)0,
+                            GSS_C_NT_HOSTBASED_SERVICE,
+                            (gss_name_t *)0);
+          ]])
+        ],[
+          AC_MSG_RESULT([yes])
+        ],[
+          AC_MSG_RESULT([no])
+          AC_DEFINE([HAVE_OLD_GSSMIT],[1],[if you have an old MIT gssapi library, lacking GSS_C_NT_HOSTBASED_SERVICE])
+        ])
+      fi
+    ]
+  )
+else
+  AC_MSG_RESULT(no)
+fi
+if test x"$want_gss" = xyes; then
+  AC_DEFINE([HAVE_GSSAPI],[1],[if you have the gssapi libraries])
+
+  if test -n "$gnu_gss"; then
+    LDFLAGS="$LDFLAGS $GSSAPI_LIB_DIR"
+    LIBS="$LIBS -lgss"
+  elif test -z "$GSSAPI_LIB_DIR"; then
+     case $host in
+     *-*-darwin*)
+        LIBS="$LIBS -lgssapi_krb5 -lresolv"
+        ;;
+     *)
+        if test -f "$GSSAPI_ROOT/bin/krb5-config"; then
+           dnl krb5-config doesn't have --libs-only-L or similar, put everything
+           dnl into LIBS
+           gss_libs=`$GSSAPI_ROOT/bin/krb5-config --libs gssapi`
+           LIBS="$LIBS $gss_libs"
+        elif test "$GSSAPI_ROOT" != "yes"; then
+           LDFLAGS="$LDFLAGS -L$GSSAPI_ROOT/lib$libsuff"
+           LIBS="$LIBS -lgssapi"
+        else
+           LIBS="$LIBS -lgssapi"
+        fi
+        ;;
+     esac
+  else
+     LDFLAGS="$LDFLAGS $GSSAPI_LIB_DIR"
+     LIBS="$LIBS -lgssapi"
+  fi
+else
+  CPPFLAGS="$save_CPPFLAGS"
 fi
 
 

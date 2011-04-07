@@ -1,6 +1,5 @@
 AUTOMAKE_OPTIONS = foreign
-
-ACLOCAL_AMFLAGS = -I .
+ACLOCAL_AMFLAGS = -I m4
 
 include doxygen.am
 
@@ -22,17 +21,12 @@ dist-hook:
 	rm -rf `find $(distdir)/isapi_shib -name .svn`
 	rm -rf `find $(distdir)/doc/api -name .svn`
 
-GENFILES = shibboleth.spec pkginfo Portfile
+GENFILES = @PACKAGE_NAME@.spec pkginfo Portfile
 
 EXTRA_DIST = $(DX_CONFIG) \
     isapi_shib \
     Shibboleth.sln \
-    libtool.m4 \
-    doxygen.m4 \
-    acx_pthread.m4 \
-    depcomp \
     config_win32.h \
     $(GENFILES) \
     $(GENFILES:%=%.in) \
-    depend \
     postinstall

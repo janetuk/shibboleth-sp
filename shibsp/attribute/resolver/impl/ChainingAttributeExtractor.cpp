@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,6 +64,13 @@ namespace shibsp {
             }
         }
 
+        void generateMetadata(SPSSODescriptor& role) const {
+            for (vector<AttributeExtractor*>::const_iterator i=m_extractors.begin(); i!=m_extractors.end(); ++i) {
+                Locker locker(*i);
+                (*i)->generateMetadata(role);
+            }
+        }
+
     private:
         vector<AttributeExtractor*> m_extractors;
     };
@@ -96,17 +103,24 @@ AttributeExtractor::~AttributeExtractor()
 {
 }
 
+void AttributeExtractor::generateMetadata(SPSSODescriptor& role) const
+{
+}
+
 ChainingAttributeExtractor::ChainingAttributeExtractor(const DOMElement* e)
 {
     SPConfig& conf = SPConfig::getConfig();
 
     // Load up the chain of handlers.
-    e = e ? XMLHelper::getFirstChildElement(e, _AttributeExtractor) : NULL;
+    e = XMLHelper::getFirstChildElement(e, _AttributeExtractor);
     while (e) {
-        auto_ptr_char type(e->getAttributeNS(NULL,_type));
-        if (type.get() && *(type.get())) {
+        string t(XMLHelper::getAttrString(e, nullptr, _type));
+        if (!t.empty()) {
             try {
-                m_extractors.push_back(conf.AttributeExtractorManager.newPlugin(type.get(),e));
+                Category::getInstance(SHIBSP_LOGCAT".AttributeExtractor.Chaining").info(
+                    "building AttributeExtractor of type (%s)...", t.c_str()
+                    );
+                m_extractors.push_back(conf.AttributeExtractorManager.newPlugin(t.c_str(), e));
             }
             catch (exception& ex) {
                 Category::getInstance(SHIBSP_LOGCAT".AttributeExtractor.Chaining").error(

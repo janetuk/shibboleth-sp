@@ -1,5 +1,5 @@
 /*
- *  Copyright 2009 Internet2
+ *  Copyright 2009-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,12 +41,12 @@ namespace shibsp {
         ~DOMAttributeDecoder() {}
 
         Attribute* decode(
-            const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=NULL, const char* relyingParty=NULL
+            const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=nullptr, const char* relyingParty=nullptr
             ) const;
 
     private:
         DDF convert(DOMElement* e, bool nameit=true) const;
-        auto_ptr_char m_formatter;
+        string m_formatter;
         map<pair<xstring,xstring>,string> m_tagMap;
     };
 
@@ -58,19 +58,19 @@ namespace shibsp {
     static const XMLCh Mapping[] =  UNICODE_LITERAL_7(M,a,p,p,i,n,g);
     static const XMLCh _from[] =    UNICODE_LITERAL_4(f,r,o,m);
     static const XMLCh _to[] =      UNICODE_LITERAL_2(t,o);
-    static const XMLCh formatter[] =      UNICODE_LITERAL_9(f,o,r,m,a,t,t,e,r);
+    static const XMLCh formatter[] =UNICODE_LITERAL_9(f,o,r,m,a,t,t,e,r);
 };
 
 DOMAttributeDecoder::DOMAttributeDecoder(const DOMElement* e)
-    : AttributeDecoder(e), m_formatter(e ? e->getAttributeNS(NULL,formatter) : NULL)
+    : AttributeDecoder(e), m_formatter(XMLHelper::getAttrString(e, nullptr, formatter))
 {
     Category& log = Category::getInstance(SHIBSP_LOGCAT".AttributeDecoder.DOM");
 
-    e = e ? XMLHelper::getFirstChildElement(e, Mapping) : NULL;
+    e = XMLHelper::getFirstChildElement(e, Mapping);
     while (e) {
-        if (e->hasAttributeNS(NULL, _from) && e->hasAttributeNS(NULL, _to)) {
-            auto_ptr<xmltooling::QName> f(XMLHelper::getNodeValueAsQName(e->getAttributeNodeNS(NULL, _from)));
-            auto_ptr_char t(e->getAttributeNS(NULL, _to));
+        if (e->hasAttributeNS(nullptr, _from) && e->hasAttributeNS(nullptr, _to)) {
+            auto_ptr<xmltooling::QName> f(XMLHelper::getNodeValueAsQName(e->getAttributeNodeNS(nullptr, _from)));
+            auto_ptr_char t(e->getAttributeNS(nullptr, _to));
             if (f.get() && t.get() && *t.get()) {
                 if (log.isDebugEnabled())
                     log.debug("mapping (%s) to (%s)", f->toString().c_str(), t.get());
@@ -94,10 +94,10 @@ Attribute* DOMAttributeDecoder::decode(
 
     if (!xmlObject || !XMLString::equals(saml1::Attribute::LOCAL_NAME, xmlObject->getElementQName().getLocalPart())) {
         log.warn("XMLObject type not recognized by DOMAttributeDecoder, no values returned");
-        return NULL;
+        return nullptr;
     }
 
-    auto_ptr<ExtensibleAttribute> attr(new ExtensibleAttribute(ids, m_formatter.get()));
+    auto_ptr<ExtensibleAttribute> attr(new ExtensibleAttribute(ids, m_formatter.c_str()));
     DDF dest = attr->getValues();
     vector<XMLObject*>::const_iterator v,stop;
 
@@ -130,7 +130,7 @@ Attribute* DOMAttributeDecoder::decode(
         }
         else {
             log.warn("XMLObject type not recognized by DOMAttributeDecoder, no values returned");
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -145,7 +145,7 @@ Attribute* DOMAttributeDecoder::decode(
             log.warn("skipping AttributeValue without a backing DOM");
     }
 
-    return dest.integer() ? _decode(attr.release()) : NULL;
+    return dest.integer() ? _decode(attr.release()) : nullptr;
 }
 
 DDF DOMAttributeDecoder::convert(DOMElement* e, bool nameit) const
@@ -153,7 +153,7 @@ DDF DOMAttributeDecoder::convert(DOMElement* e, bool nameit) const
     const XMLCh* nsURI;
     const XMLCh* local;
     map<pair<xstring,xstring>,string>::const_iterator mapping;
-    DDF obj = DDF(NULL).structure();
+    DDF obj = DDF(nullptr).structure();
 
     if (nameit) {
         // Name this structure.

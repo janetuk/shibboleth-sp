@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ namespace shibsp {
     static XMLCh RuleReference[] =  UNICODE_LITERAL_13(R,u,l,e,R,e,f,e,r,e,n,c,e);
 };
 
-NotMatchFunctor::NotMatchFunctor(const pair<const FilterPolicyContext*,const DOMElement*>& p) : m_functor(NULL)
+NotMatchFunctor::NotMatchFunctor(const pair<const FilterPolicyContext*,const DOMElement*>& p) : m_functor(nullptr)
 {
     const DOMElement* e = XMLHelper::getFirstChildElement(p.second);
     if (e) {
@@ -80,10 +80,10 @@ NotMatchFunctor::NotMatchFunctor(const pair<const FilterPolicyContext*,const DOM
             m_functor = buildFunctor(e, p.first);
         }
         else if (XMLHelper::isNodeNamed(e, shibspconstants::SHIB2ATTRIBUTEFILTER_MF_BASIC_NS, RuleReference)) {
-            auto_ptr_char ref(e->getAttributeNS(NULL, _ref));
-            if (ref.get() && *ref.get()) {
-                multimap<string,MatchFunctor*>::const_iterator rule = p.first->getMatchFunctors().find(ref.get());
-                m_functor = (rule!=p.first->getMatchFunctors().end()) ? rule->second : NULL;
+            string ref = XMLHelper::getAttrString(e, nullptr, _ref);
+            if (!ref.empty()) {
+                multimap<string,MatchFunctor*>::const_iterator rule = p.first->getMatchFunctors().find(ref);
+                m_functor = (rule!=p.first->getMatchFunctors().end()) ? rule->second : nullptr;
             }
         }
     }
@@ -95,10 +95,9 @@ NotMatchFunctor::NotMatchFunctor(const pair<const FilterPolicyContext*,const DOM
 MatchFunctor* NotMatchFunctor::buildFunctor(const DOMElement* e, const FilterPolicyContext* functorMap)
 {
     // We'll track and map IDs just for consistency, but don't require them or worry about dups.
-    auto_ptr_char temp(e->getAttributeNS(NULL,_id));
-    const char* id = (temp.get() && *temp.get()) ? temp.get() : "";
-    if (*id && functorMap->getMatchFunctors().count(id))
-        id = "";
+    string id = XMLHelper::getAttrString(e, nullptr, _id);
+    if (!id.empty() && functorMap->getMatchFunctors().count(id))
+        id.clear();
 
     auto_ptr<xmltooling::QName> type(XMLHelper::getXSIType(e));
     if (!type.get())

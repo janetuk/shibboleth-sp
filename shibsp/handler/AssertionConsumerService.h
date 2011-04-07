@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,8 +77,8 @@ namespace shibsp {
             const xercesc::DOMElement* e,
             const char* appId,
             xmltooling::logging::Category& log,
-            xercesc::DOMNodeFilter* filter=NULL,
-            const std::map<std::string,std::string>* remapper=NULL
+            xercesc::DOMNodeFilter* filter=nullptr,
+            const std::map<std::string,std::string>* remapper=nullptr
             );
 
         /**
@@ -94,6 +94,7 @@ namespace shibsp {
         void generateMetadata(opensaml::saml2md::SPSSODescriptor& role, const char* handlerURL) const;
         
         /**
+         * @deprecated
          * Returns a SecurityPolicy instance to use for an incoming request.
          *
          * <p>Allows handlers to customize the type of policy object their policy rules might require.
@@ -121,7 +122,7 @@ namespace shibsp {
          * @param httpRequest   client request that included message
          * @param httpResponse  response to client
          * @param policy        the SecurityPolicy in effect, after having evaluated the message
-         * @param settings      policy configuration settings in effect
+         * @param reserved      ignore this parameter
          * @param xmlObject     a protocol-specific message object
          */
         virtual void implementProtocol(
@@ -129,7 +130,7 @@ namespace shibsp {
             const xmltooling::HTTPRequest& httpRequest,
             xmltooling::HTTPResponse& httpResponse,
             opensaml::SecurityPolicy& policy,
-            const PropertySet* settings,
+            const PropertySet* reserved,
             const xmltooling::XMLObject& xmlObject
             ) const=0;
 
@@ -162,18 +163,18 @@ namespace shibsp {
          */
         ResolutionContext* resolveAttributes(
             const Application& application,
-            const opensaml::saml2md::RoleDescriptor* issuer=NULL,
-            const XMLCh* protocol=NULL,
-            const opensaml::saml1::NameIdentifier* v1nameid=NULL,
-            const opensaml::saml2::NameID* nameid=NULL,
-            const XMLCh* authncontext_class=NULL,
-            const XMLCh* authncontext_decl=NULL,
-            const std::vector<const opensaml::Assertion*>* tokens=NULL
+            const opensaml::saml2md::RoleDescriptor* issuer=nullptr,
+            const XMLCh* protocol=nullptr,
+            const opensaml::saml1::NameIdentifier* v1nameid=nullptr,
+            const opensaml::saml2::NameID* nameid=nullptr,
+            const XMLCh* authncontext_class=nullptr,
+            const XMLCh* authncontext_decl=nullptr,
+            const std::vector<const opensaml::Assertion*>* tokens=nullptr
             ) const;
 
     public:
         const char* getType() const;
-
+        const XMLCh* getProtocolFamily() const;
 #endif
     private:
         std::pair<bool,long> processMessage(

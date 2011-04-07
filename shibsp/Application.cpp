@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2009 Internet2
+ *  Copyright 2001-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,7 +50,8 @@ const ServiceProvider& Application::getServiceProvider() const
 
 const char* Application::getId() const
 {
-    return getString("id").second;
+    pair<bool,const char*> ret = getString("id");
+    return ret.first ? ret.second : "default";
 }
 
 pair<string,const char*> Application::getCookieNameProps(const char* prefix, time_t* lifetime) const
@@ -131,4 +132,11 @@ void Application::clearAttributeHeaders(SPRequest& request) const
     SharedLock unsetLock(m_lock, false);
     for (vector< pair<string,string> >::const_iterator i = m_unsetHeaders.begin(); i!=m_unsetHeaders.end(); ++i)
         request.clearHeader(i->first.c_str(), i->second.c_str());
+}
+
+const Handler* Application::getAssertionConsumerServiceByProtocol(const XMLCh* protocol, const char* binding) const
+{
+    auto_ptr_XMLCh b(binding);
+    const vector<const Handler*>& handlers = getAssertionConsumerServicesByBinding(b.get());
+    return handlers.empty() ? nullptr : handlers.front();
 }

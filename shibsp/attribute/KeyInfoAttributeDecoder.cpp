@@ -1,5 +1,5 @@
 /*
- *  Copyright 2009 Internet2
+ *  Copyright 2009-2010 Internet2
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,18 +48,15 @@ namespace shibsp {
         }
 
         Attribute* decode(
-            const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=NULL, const char* relyingParty=NULL
+            const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=nullptr, const char* relyingParty=nullptr
             ) const;
 
     private:
         void extract(const KeyInfo* k, vector<string>& dest) const {
             auto_ptr<Credential> cred (getKeyInfoResolver()->resolve(k, Credential::RESOLVE_KEYS));
             if (cred.get()) {
-                const char* alg = m_keyInfoHashAlg.get();
-                if (!alg || !*alg)
-                    alg = "SHA1";
                 dest.push_back(string());
-                dest.back() = SecurityHelper::getDEREncoding(*cred.get(), m_hash ? alg : NULL);
+                dest.back() = SecurityHelper::getDEREncoding(*cred.get(), m_hash ? m_keyInfoHashAlg.c_str() : nullptr);
                 if (dest.back().empty())
                     dest.pop_back();
             }
@@ -70,7 +67,7 @@ namespace shibsp {
         }
 
         bool m_hash;
-        auto_ptr_char m_keyInfoHashAlg;
+        string m_keyInfoHashAlg;
         KeyInfoResolver* m_keyInfoResolver;
     };
 
@@ -86,19 +83,16 @@ namespace shibsp {
 };
 
 KeyInfoAttributeDecoder::KeyInfoAttributeDecoder(const DOMElement* e)
-        : AttributeDecoder(e),
-          m_hash(false),
-          m_keyInfoHashAlg(e ? e->getAttributeNS(NULL, keyInfoHashAlg) : NULL),
-          m_keyInfoResolver(NULL) {
-    const XMLCh* flag = e ? e->getAttributeNS(NULL, _hash) : NULL;
-    m_hash = (flag && (*flag == chLatin_t || *flag == chDigit_1));
-    e = e ? XMLHelper::getFirstChildElement(e,_KeyInfoResolver) : NULL;
+    : AttributeDecoder(e),
+        m_hash(XMLHelper::getAttrBool(e, false, _hash)),
+        m_keyInfoHashAlg(XMLHelper::getAttrString(e, "SHA1", keyInfoHashAlg)),
+        m_keyInfoResolver(nullptr) {
+    e = XMLHelper::getFirstChildElement(e,_KeyInfoResolver);
     if (e) {
-        auto_ptr_char t(e->getAttributeNS(NULL, _type));
-        if (t.get() && *t.get())
-            m_keyInfoResolver = XMLToolingConfig::getConfig().KeyInfoResolverManager.newPlugin(t.get(), e);
-        else
+        string t(XMLHelper::getAttrString(e, nullptr, _type));
+        if (t.empty())
             throw UnknownExtensionException("<KeyInfoResolver> element found with no type attribute");
+        m_keyInfoResolver = XMLToolingConfig::getConfig().KeyInfoResolverManager.newPlugin(t.c_str(), e);
     }
 }
 
@@ -110,7 +104,7 @@ Attribute* KeyInfoAttributeDecoder::decode(
 
     if (!xmlObject || !XMLString::equals(saml1::Attribute::LOCAL_NAME, xmlObject->getElementQName().getLocalPart())) {
         log.warn("XMLObject type not recognized by KeyInfoAttributeDecoder, no values returned");
-        return NULL;
+        return nullptr;
     }
 
     auto_ptr<SimpleAttribute> attr(new SimpleAttribute(ids));
@@ -146,7 +140,7 @@ Attribute* KeyInfoAttributeDecoder::decode(
         }
         else {
             log.warn("XMLObject type not recognized by KeyInfoAttributeDecoder, no values returned");
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -165,5 +159,5 @@ Attribute* KeyInfoAttributeDecoder::decode(
         }
     }
 
-    return dest.empty() ? NULL : _decode(attr.release());
+    return dest.empty() ? nullptr : _decode(attr.release());
 }
