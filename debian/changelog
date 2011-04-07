@@ -33,6 +33,12 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
     - Add error information to attribute ResolutionContext
     - Multiple bug fixes
   * Change package names for the upstream SONAME change.
+  * Build-depend on xmltooling 1.4 or later and OpenSAML 2.4 or later, and
+    also update schema and development package dependencies.
+  * Force build dependency on xml-security-c 1.6 or later for consistent
+    build results.
+  * Add build dependency on pkg-config, which upstream now uses to find
+    the SSL libraries.
   * Update debian/copyright to the current DEP-5 specification.
 
  -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
