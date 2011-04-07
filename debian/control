@@ -9,7 +9,7 @@ Build-Depends: debhelper (>= 8), apache2-threaded-dev, autoconf, automake,
  libsaml2-dev (>= 2.4), libssl-dev, libtool, libxerces-c-dev,
  libxml-security-c-dev (>= 1.6), libxmltooling-dev (>= 1.4),
  opensaml2-schemas, pkg-config, unixodbc-dev, xmltooling-schemas
-Standards-Version: 3.8.4
+Standards-Version: 3.9.1
 Homepage: http://shibboleth.internet2.edu/
 Vcs-Git: git://git.debian.org/git/pkg-shibboleth/shibboleth-sp2.git
 Vcs-Browser: http://git.debian.org/?p=pkg-shibboleth/shibboleth-sp2.git

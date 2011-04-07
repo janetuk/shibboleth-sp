@@ -49,6 +49,7 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
   * Change to Debian source format 3.0 (quilt).  Force a single Debian
     patch for simplicity since the packaging is maintained in Git using
     branches, and include a patch header explaining why.
+  * Update standards version to 3.9.1 (no changes required).
 
  -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
 
