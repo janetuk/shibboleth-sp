@@ -64,7 +64,7 @@ Prints out the version string.
 =item B<-x> I<pathname>
 
 Specifies the XML schema catalog to use. Defaults to
-/usr/share/xml/shibboleth/catalog.xml.
+F</usr/share/xml/shibboleth/catalog.xml>.
 
 =back
 

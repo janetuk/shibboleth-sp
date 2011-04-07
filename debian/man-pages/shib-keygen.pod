@@ -4,8 +4,8 @@ shib-keygen - Generate a key pair for a Shibboleth SP
 
 =head1 SYNOPSIS
 
-B<shib-keygen> [B<-bf>] [B<-e> I<entity-id>] [B<-h> I<hostname>]
-    [B<-y> I<years>]
+B<shib-keygen> [B<-bf>] [B<-e> I<entity-id>] [B<-g> I<group>]
+    [B<-h> I<hostname>] [B<-o> I<output-dir>] [B<-u> I<user>] [B<-y> I<years>]
 
 =head1 DESCRIPTION
 
@@ -13,7 +13,7 @@ Generate a self-signed X.509 certificate for a Shibboleth SP.  By default,
 the certificate will be for the local fully-qualified (as returned by
 C<hostname --fqdn>) hostname.  An entity ID can be specified with the
 B<-e> flag.  The B<openssl> command-line client is used to generate the
-key pair.  The public certificate will be created in
+key pair.  By default, the public certificate will be created in
 F</etc/shibboleth/sp-cert.pem> and the private key in
 F</etc/shibboleth/sp-key.pem>.
 
@@ -38,11 +38,28 @@ before generating a new certificate.  Without this option, if those files
 already exist, B<shib-keygen> prints an error and exits rather than
 overwriting them.
 
+=item B<-g> I<group>
+
+After generating the key and certificate, change the group ownership of
+the key file to this group.  By default, the group used is C<_shibd>.
+
 =item B<-h> I<hostname>
 
 Specify the fully-qualified domain name for which to generate a
 certificate.  If this option isn't given, the hostname defaults to the
 result of C<hostname --fqdn>.
+
+=item B<-o> I<output-dir>
+
+Store F<sp-cert.pem> and F<sp-key.pem> in the directory I<output-dir>
+rather than the default of F</etc/shibboleth>.
+
+=item B<-u> I<user>
+
+After generating the key and certificate, change the ownership of the key
+file to this user.  This is used to allow the key to be read by a non-root
+user so that B<shibd> can be run as a non-root user.  By default, the
+key is owned by C<_shibd>.
 
 =item B<-y> I<years>
 
@@ -63,13 +80,17 @@ and deleted afterwards.
 
 =item F</etc/shibboelth/sp-cert.pem>
 
-The public certificate created by this script.
+The default location of the public certificate created by this script.
 
 =item F</etc/shibboleth/sp-key.pem>
 
-The private key for the certificate created by this script.
+The default location of the private key for the certificate created by
+this script.
 
 =back
+
+These three files are stored in the directory given with B<-o> instead, if
+that option is given.
 
 =head1 AUTHOR
 
@@ -77,7 +98,7 @@ This manual page was written by Russ Allbery for Debian GNU/Linux.
 
 =head1 COPYRIGHT
 
-Copyright 2008 Russ Allbery.  This manual page is hereby placed into the
-public domain by its author.
+Copyright 2008, 2011 Russ Allbery.  This manual page is hereby placed into
+the public domain by its author.
 
 =cut

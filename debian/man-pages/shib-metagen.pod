@@ -4,11 +4,12 @@ shib-metagen - Generate metadata for a Shibboleth SP
 
 =head1 SYNOPSIS
 
-B<shib-metagen> [B<-c> I<cert> [B<-c> I<cert> ...]] [B<-e> I<entity-id>]
+B<shib-metagen> [B<-12ADLNO>] [B<-c> I<cert> [B<-c> I<cert> ...]]
+    [B<-e> I<entity-id>] [B<-f> I<format> [B<-f> I<format> ...]]
     [B<-h> I<host> [B<-h> I<host> ...]] [B<-n> I<host> [B<-n> I<host> ...]]
     [B<-o> I<organization>] [B<-a> I<admin> [B<-a> I<admin> ...]]
     [B<-s> I<support> [B<-s> I<support> ...]]
-    [B<-t> I<tech> [B<-t> I<tech> ...]]
+    [B<-t> I<tech> [B<-t> I<tech> ...]] [B<-u> I<url>]
 
 =head1 DESCRIPTION
 
@@ -22,6 +23,20 @@ can be given multiple times.
 =head1 OPTIONS
 
 =over 4
+
+=item B<-1>
+
+Generate SAML 1.0 metadata.  The default, if neither B<-1> nor B<-2> is
+given, is to generate metadata for both SAML 1.0 and SAML 2.0.
+
+=item B<-2>
+
+Generate SAML 2.0 metadata.  The default, if neither B<-1> nor B<-2> is
+given, is to generate metadata for both SAML 1.0 and SAML 2.0.
+
+=item B<-A>
+
+Include artifact metadata.
 
 =item B<-a> I<admin>
 
@@ -38,13 +53,23 @@ option may be given multiple times to specify multiple certificates.  If
 it is not given, the default certificate is F<sp-cert.pem> in the current
 working directory.
 
+=item B<-D>
+
+Include discovery service information in the metadata.  By default,
+discovery service information is not included.
+
 =item B<-e> I<entity-id>
 
 The entity ID for this SP.  This must be a unique identifier for this SP
-and must be a URL.  If B<-o> is given, it is used as the URL for the
-organization running this Shibboleth SP.  If it is not specified, it
-defaults to C<https://I<host>/shibboleth> where I<host> is the argument to
-the first B<-h> option.
+and must be a URL.  If B<-o> is given and B<-u> is not given, I<entity-id>
+is used as the URL for the organization running this Shibboleth SP.  If it
+is not specified, it defaults to C<https://I<host>/shibboleth> where
+I<host> is the argument to the first B<-h> option.
+
+=item B<-f> I<format>
+
+Include this NameIDFormat in the metadata.  This option may be given more
+than once.
 
 =item B<-h> I<host>
 
@@ -53,6 +78,16 @@ B<-n> must be specified at least once.  It should be repeated for every
 virtual host that responds to the Shibboleth protocol.  B<-h> should be
 used for hostnames or virtual hosts that use SSL.
 
+=item B<-L>
+
+Include Single Logout information in the metadata.  This is not included
+by default.
+
+=item B<-N>
+
+Include NameID management information in the metadata.  This is not
+included by default.
+
 =item B<-n> I<host>
 
 A hostname for this SP (possibly a virtual host).  Either this option or
@@ -60,6 +95,11 @@ B<-h> must be specified at least once.  It should be repeated for every
 virtual host that responds to the Shibboleth protocol.  B<-n> should be
 used for hostnames or virtual hosts that do not use SSL to protect the
 Shibboleth communication.
+
+=item B<-O>
+
+Include XML namespace declarations in the generated metadata.  This is the
+default.
 
 =item B<-o> I<organization>
 
@@ -85,6 +125,13 @@ multiple times to list multiple contacts.  I<tech> should be in the form
 C<I<first>/I<last>/I<email>> where I<first> is the given name and I<last>
 is the surname.
 
+=item B<-u> I<url>
+
+Sets the URL for the organization.  This information is only used if the
+B<-o> option is also given to specify the name of the organization.  If
+B<-o> is given and B<-u> is not given, the entity ID (set with B<-e>) is
+used as the organization URL.
+
 =back
 
 =head1 AUTHOR
@@ -93,7 +140,7 @@ This manual page was written by Russ Allbery for Debian GNU/Linux.
 
 =head1 COPYRIGHT
 
-Copyright 2009 Russ Allbery.  This manual page is hereby placed into the
-public domain by its author.
+Copyright 2009, 2011 Russ Allbery.  This manual page is hereby placed into
+the public domain by its author.
 
 =cut
