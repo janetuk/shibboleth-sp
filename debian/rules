@@ -1,31 +1,12 @@
 #!/usr/bin/make -f
-# -*- makefile -*-
 
-# Uncomment this to turn on verbose mode.
-#export DH_VERBOSE=1
-
-# This has to be exported to make some magic below work.
-export DH_OPTIONS
-
-CFLAGS = -g
-CXXFLAGS = -g
 ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
     DEBUG = --enable-debug
 else
     DEBUG =
 endif
 
-# Tell Autoconf the correct system types.
-DEB_HOST_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
-DEB_BUILD_GNU_TYPE ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
-ifeq ($(DEB_BUILD_GNU_TYPE),$(DEB_HOST_GNU_TYPE))
-    SYSTEM = --build $(DEB_HOST_GNU_TYPE)
-else
-    SYSTEM = --build $(DEB_BUILD_GNU_TYPE) --host $(DEB_HOST_GNU_TYPE)
-endif
-
-# These variable is used only by get-orig-source, which will normally only be
-# run by maintainers.
+# These variables are used by get-orig-source and to generate man pages.
 DEBVERS := $(shell dpkg-parsechangelog | grep ^Version: | cut -d' ' -f2 \
 		| cut -d- -f1)
 VERSION := $(shell echo '$(DEBVERS)' | sed -e 's/[+-].*//' -e 's/~//g')
@@ -44,47 +25,19 @@ get-orig-source:
 	rm -rf shibboleth-sp2_$(DEBVERS).orig
 	gzip -9 shibboleth-sp2_$(DEBVERS).orig.tar
 
-configure: configure-stamp
-configure-stamp:
-	dh_testdir
-	cp /usr/share/misc/config.guess config.guess
-	cp /usr/share/misc/config.sub config.sub
-	rm -f libtool.m4
-	libtoolize --force
-	autoreconf --force
-	rm -rf autom4te.cache
-	CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" ./configure --prefix=/usr \
-	    --sysconfdir=/etc --libexecdir=/usr/lib/shibboleth \
+override_dh_auto_configure:
+	autoreconf -f -i
+	dh_auto_configure -- --libexecdir=/usr/lib/shibboleth \
 	    --localstatedir=/var --enable-apache-22 \
 	    --with-apxs2=/usr/bin/apxs2 --disable-dependency-tracking \
-	    --with-memcached \
-	    $(SYSTEM)
-	touch $@
+	    --with-memcached $(SYSTEM)
 
-build: build-arch build-indep
-build-arch: build-stamp
-build-indep:
-build-stamp: configure-stamp
-	dh_testdir
-	$(MAKE)
-	touch $@
-
-clean:
-	dh_testdir
-	dh_testroot
-	rm -f configure-stamp build-stamp install-stamp
-	[ ! -f Makefile ] || $(MAKE) distclean
+override_dh_auto_clean:
+	dh_auto_clean
 	find . -name Makefile.in -print0 | xargs -0r rm
-	dh_clean aclocal.m4 config.h config.h.in config.status configure \
-	    config.guess config.sub libtool.m4 ltmain.sh shibsp/paths.h \
-	    debian/libapache2-mod-shib2.shibd.init
 
-install: install-stamp
-install-stamp:
-	dh_testdir
-	dh_testroot
-	dh_prep
-	$(MAKE) NOKEYGEN=1 DESTDIR=$(CURDIR)/debian/tmp install
+override_dh_auto_install:
+	NOKEYGEN=1 dh_auto_install
 	rm -r $(CURDIR)/debian/tmp/usr/share/doc/shibboleth*
 	rm -r $(CURDIR)/debian/tmp/var/run
 	rm $(CURDIR)/debian/tmp/etc/shibboleth/*.dist
@@ -99,7 +52,8 @@ install-stamp:
 	    $(CURDIR)/debian/tmp/usr/bin/shib-metagen
 	mv $(CURDIR)/debian/tmp/etc/shibboleth/shibd-debian \
 	    $(CURDIR)/debian/libapache2-mod-shib2.shibd.init
-	dh_installdirs -s -i
+
+override_dh_install:
 	mv $(CURDIR)/debian/tmp/usr/lib/shibboleth/mod_shib_22.so \
 	    $(CURDIR)/debian/libapache2-mod-shib2/usr/lib/apache2/modules
 	rm $(CURDIR)/debian/tmp/usr/lib/shibboleth/mod_shib_22.la
@@ -119,39 +73,9 @@ install-stamp:
 	    --center 'Shibboleth' --release $(VERSION) \
 	    $(CURDIR)/debian/libapache2-mod-shib2/usr/share/man/man8/shibd.8
 	dh_install -s -i --fail-missing
-	touch $@
 
-binary: binary-arch binary-indep
-binary-arch: DH_OPTIONS=-a
-binary-arch: install-stamp
-	dh_testdir
-	dh_testroot
-	dh_installchangelogs
+override_dh_installdocs:
 	dh_installdocs -A doc/NOTICE.txt
+
+override_dh_installinit:
 	dh_installinit --name=shibd
-	dh_installlogcheck
-	dh_strip
-	dh_compress
-	dh_fixperms
-	DH_OPTIONS="" dh_makeshlibs -plibshibsp4
-	dh_installdeb
-	dh_shlibdeps
-	dh_gencontrol
-	dh_md5sums
-	dh_builddeb
-
-binary-indep: DH_OPTIONS=-i
-binary-indep: install-stamp
-	dh_testdir
-	dh_testroot
-	dh_installchangelogs
-	dh_installdocs -A doc/NOTICE.txt
-	dh_compress
-	dh_fixperms
-	dh_installdeb
-	dh_gencontrol
-	dh_md5sums
-	dh_builddeb
-
-.PHONY: binary binary-arch binary-indep build build-arch build-indep clean
-.PHONY: install

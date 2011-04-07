@@ -39,6 +39,8 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
     build results.
   * Add build dependency on pkg-config, which upstream now uses to find
     the SSL libraries.
+  * Update to debhelper compatibility level V8.
+    - Use debhelper rule minimization.
   * Update debian/copyright to the current DEP-5 specification.
 
  -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
