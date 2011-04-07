@@ -3,6 +3,7 @@
 # Defaults added for Debian.  They can still be overridden by command-line
 # options.
 OUT=/etc/shibboleth
+USER=_shibd
 GROUP=_shibd
 
 while getopts h:u:g:o:e:y:bf c
