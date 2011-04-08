@@ -40,6 +40,7 @@ override_dh_auto_clean:
 
 override_dh_auto_install:
 	NOKEYGEN=1 dh_auto_install
+	rm debian/tmp/usr/lib/shibboleth/*.la
 	rm -r $(CURDIR)/debian/tmp/usr/share/doc/shibboleth*
 	rm -r $(CURDIR)/debian/tmp/var/run
 	rm $(CURDIR)/debian/tmp/etc/shibboleth/*.dist

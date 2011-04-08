@@ -44,6 +44,9 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
   * Replace the version of jQuery installed by Doxygen in the
     documentation package with a symlink to the version supplied by the
     Debian package and add a dependency.
+  * Drop the *.la files from /usr/lib/shibboleth.  Upstream does loading
+    by *.so files and doesn't use libltdl, and Debian is dropping *.la
+    files where possible.
   * Update to debhelper compatibility level V8.
     - Use debhelper rule minimization.
   * Update debian/copyright to the current DEP-5 specification.
