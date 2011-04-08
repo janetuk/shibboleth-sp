@@ -51,7 +51,7 @@ Package: libshibsp-dev
 Section: libdevel
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
- libshibsp4 (= ${binary:Version}), libsaml2-dev (>= 2.4),
+ libshibsp5 (= ${binary:Version}), libsaml2-dev (>= 2.4),
  libxerces-c-dev, libxmltooling-dev (>= 1.4)
 Suggests: libshib2-doc (= ${source:Version})
 Description: Federated web single sign-on system (development)
