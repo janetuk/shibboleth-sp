@@ -1,4 +1,4 @@
-shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
+shibboleth-sp2 (2.4.2+dfsg-1) unstable; urgency=low
 
   [ Ferenc Wagner ]
   * Fix watch file.  The 2.4 prerelease broke it.
@@ -62,7 +62,7 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
     branches, and include a patch header explaining why.
   * Update standards version to 3.9.1 (no changes required).
 
- -- Russ Allbery <rra@debian.org>  Mon, 29 Nov 2010 15:54:07 -0800
+ -- Russ Allbery <rra@debian.org>  Fri, 08 Apr 2011 13:01:21 -0700
 
 shibboleth-sp2 (2.3.1+dfsg-5) unstable; urgency=high
 
