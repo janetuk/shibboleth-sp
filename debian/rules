@@ -85,5 +85,8 @@ override_dh_installdocs:
 override_dh_installinit:
 	dh_installinit --name=shibd
 
+override_dh_makeshlibs:
+	dh_makeshlibs -Xusr/lib/shibboleth
+
 %:
 	dh $@

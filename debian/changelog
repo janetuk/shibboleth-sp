@@ -52,6 +52,8 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
   * Fix LSB Description keyword formatting in the shibd init script.
   * Empty the Default-Stop setting for the shibd init script.  Just
     killing the daemon as part of shutdown should be fine.
+  * Ignore the plugins in /usr/lib/shibboleth when running dh_makeshlibs.
+    They have SONAMEs but aren't actually libraries.
   * Update to debhelper compatibility level V8.
     - Use debhelper rule minimization.
   * Update debian/copyright to the current DEP-5 specification.
