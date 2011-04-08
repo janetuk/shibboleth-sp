@@ -41,39 +41,37 @@ override_dh_auto_clean:
 override_dh_auto_install:
 	NOKEYGEN=1 dh_auto_install
 	rm debian/tmp/usr/lib/shibboleth/*.la
-	rm -r $(CURDIR)/debian/tmp/usr/share/doc/shibboleth*
-	rm -r $(CURDIR)/debian/tmp/var/run
-	rm $(CURDIR)/debian/tmp/etc/shibboleth/*.dist
-	rm $(CURDIR)/debian/tmp/etc/shibboleth/*.config
-	rm $(CURDIR)/debian/tmp/etc/shibboleth/shibd-osx.plist
-	rm $(CURDIR)/debian/tmp/etc/shibboleth/shibd-redhat
-	rm $(CURDIR)/debian/tmp/etc/shibboleth/shibd-suse
-	chmod +x $(CURDIR)/debian/tmp/etc/shibboleth/keygen.sh
-	mv $(CURDIR)/debian/tmp/etc/shibboleth/keygen.sh \
-	    $(CURDIR)/debian/tmp/usr/sbin/shib-keygen
-	mv $(CURDIR)/debian/tmp/etc/shibboleth/metagen.sh \
-	    $(CURDIR)/debian/tmp/usr/bin/shib-metagen
-	mv $(CURDIR)/debian/tmp/etc/shibboleth/shibd-debian \
-	    $(CURDIR)/debian/libapache2-mod-shib2.shibd.init
+	rm -r debian/tmp/usr/share/doc/shibboleth*
+	rm -r debian/tmp/var/run
+	rm debian/tmp/etc/shibboleth/*.dist
+	rm debian/tmp/etc/shibboleth/*.config
+	rm debian/tmp/etc/shibboleth/shibd-osx.plist
+	rm debian/tmp/etc/shibboleth/shibd-redhat
+	rm debian/tmp/etc/shibboleth/shibd-suse
+	chmod +x debian/tmp/etc/shibboleth/keygen.sh
+	mv debian/tmp/etc/shibboleth/keygen.sh debian/tmp/usr/sbin/shib-keygen
+	mv debian/tmp/etc/shibboleth/metagen.sh debian/tmp/usr/bin/shib-metagen
+	mv debian/tmp/etc/shibboleth/shibd-debian \
+	    debian/libapache2-mod-shib2.shibd.init
 
 override_dh_install:
-	mv $(CURDIR)/debian/tmp/usr/lib/shibboleth/mod_shib_22.so \
-	    $(CURDIR)/debian/libapache2-mod-shib2/usr/lib/apache2/modules
-	pod2man $(CURDIR)/debian/man-pages/mdquery.pod --section 1 \
+	mv debian/tmp/usr/lib/shibboleth/mod_shib_22.so \
+	    debian/libapache2-mod-shib2/usr/lib/apache2/modules
+	pod2man debian/man-pages/mdquery.pod --section 1 \
 	    --center 'Shibboleth' --release $(VERSION) \
-	    $(CURDIR)/debian/libapache2-mod-shib2/usr/share/man/man1/mdquery.1
-	pod2man $(CURDIR)/debian/man-pages/resolvertest.pod --section 1 \
+	    debian/libapache2-mod-shib2/usr/share/man/man1/mdquery.1
+	pod2man debian/man-pages/resolvertest.pod --section 1 \
 	    --center 'Shibboleth' --release $(VERSION) \
-	    $(CURDIR)/debian/libapache2-mod-shib2/usr/share/man/man1/resolvertest.1
-	pod2man $(CURDIR)/debian/man-pages/shib-metagen.pod --section 1 \
+	    debian/libapache2-mod-shib2/usr/share/man/man1/resolvertest.1
+	pod2man debian/man-pages/shib-metagen.pod --section 1 \
 	    --center 'Shibboleth' --release $(VERSION) \
-	    $(CURDIR)/debian/libapache2-mod-shib2/usr/share/man/man1/shib-metagen.1
-	pod2man $(CURDIR)/debian/man-pages/shib-keygen.pod --section 8 \
+	    debian/libapache2-mod-shib2/usr/share/man/man1/shib-metagen.1
+	pod2man debian/man-pages/shib-keygen.pod --section 8 \
 	    --center 'Shibboleth' --release $(VERSION) \
-	    $(CURDIR)/debian/libapache2-mod-shib2/usr/share/man/man8/shib-keygen.8
-	pod2man $(CURDIR)/debian/man-pages/shibd.pod --section 8 \
+	    debian/libapache2-mod-shib2/usr/share/man/man8/shib-keygen.8
+	pod2man debian/man-pages/shibd.pod --section 8 \
 	    --center 'Shibboleth' --release $(VERSION) \
-	    $(CURDIR)/debian/libapache2-mod-shib2/usr/share/man/man8/shibd.8
+	    debian/libapache2-mod-shib2/usr/share/man/man8/shibd.8
 	dh_install -s -i --fail-missing
 
 override_dh_installdocs:
