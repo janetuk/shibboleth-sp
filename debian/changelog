@@ -49,6 +49,9 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
   * Drop the *.la files from /usr/lib/shibboleth.  Upstream does loading
     by *.so files and doesn't use libltdl, and Debian is dropping *.la
     files where possible.
+  * Fix LSB Description keyword formatting in the shibd init script.
+  * Empty the Default-Stop setting for the shibd init script.  Just
+    killing the daemon as part of shutdown should be fine.
   * Update to debhelper compatibility level V8.
     - Use debhelper rule minimization.
   * Update debian/copyright to the current DEP-5 specification.
