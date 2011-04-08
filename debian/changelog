@@ -31,7 +31,9 @@ shibboleth-sp2 (2.4.2+dfsg-1) UNRELEASED; urgency=low
     - Support "unspecified" NameFormat without special configuration
     - Allow overriding listener details to permit use of a shared config
     - Add error information to attribute ResolutionContext
+    - Set the correct variables for log4cpp libraries (Closes: #606489)
     - Multiple bug fixes
+  * Rebuild with OpenSSL 1.0.0.  (Closes: #620774)
   * Change package names for the upstream SONAME change.
   * Update Debian man pages for upstream utility changes.
   * Build-depend on xmltooling 1.4 or later and OpenSAML 2.4 or later, and
