@@ -1,3 +1,10 @@
+shibboleth-sp2 (2.5+dfsg~moonshot1-1) unstable; urgency=low
+
+  * New moonshot pre-release
+  
+
+ -- Sam Hartman <hartmans@debian.org>  Mon, 25 Apr 2011 13:30:44 -0400
+
 shibboleth-sp2 (2.4.2+dfsg-1) unstable; urgency=low
 
   [ Ferenc Wagner ]
