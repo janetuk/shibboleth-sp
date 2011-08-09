@@ -82,7 +82,7 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
  configure.lineno config.status.lineno
 mkinstalldirs = $(install_sh) -d
-CONFIG_HEADER = config.h
+CONFIG_HEADER = config.h $(top_builddir)/shibsp/config_pub.h
 CONFIG_CLEAN_FILES = shibboleth.spec pkginfo Portfile
 CONFIG_CLEAN_VPATH_FILES =
 SOURCES =
@@ -343,7 +343,22 @@ ACLOCAL_AMFLAGS = -I m4
 
 MOSTLYCLEANFILES = $(DX_CLEANFILES)
 SUBDIRS = $(WANT_SUBDIRS)
-DIST_SUBDIRS = doc schemas configs shibsp shibd adfs util apache nsapi_shib fastcgi odbc-store memcache-store selinux
+DIST_SUBDIRS = \
+	doc \
+	schemas \
+	configs \
+	shibsp \
+	shibd \
+	adfs \
+	plugins \
+	util \
+	apache \
+	nsapi_shib \
+	fastcgi \
+	odbc-store \
+	memcache-store \
+	selinux
+
 GENFILES = @PACKAGE_NAME@.spec pkginfo Portfile
 EXTRA_DIST = $(DX_CONFIG) \
     isapi_shib \

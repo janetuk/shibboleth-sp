@@ -45,7 +45,8 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/acinclude.m4 \
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
-CONFIG_HEADER = $(top_builddir)/config.h
+CONFIG_HEADER = $(top_builddir)/config.h \
+	$(top_builddir)/shibsp/config_pub.h
 CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 SOURCES =
@@ -479,8 +480,10 @@ uninstall-am: uninstall-pkgdocDATA
 
 
 install-data-hook:
-	cp -r api $(DESTDIR)$(pkgdocdir)
-	rm -rf `find $(DESTDIR)$(pkgdocdir)/api -name .svn`
+	if test -d api ; then \
+		cp -r api $(DESTDIR)$(pkgdocdir); \
+		rm -rf `find $(DESTDIR)$(pkgdocdir)/api -name .svn`; \
+	fi;
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

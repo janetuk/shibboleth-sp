@@ -44,7 +44,8 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/acinclude.m4 \
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
-CONFIG_HEADER = $(top_builddir)/config.h
+CONFIG_HEADER = $(top_builddir)/config.h \
+	$(top_builddir)/shibsp/config_pub.h
 CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 SOURCES =
@@ -254,8 +255,8 @@ top_srcdir = @top_srcdir@
 xs = @xs@
 AUTOMAKE_OPTIONS = foreign
 pkglogdir = ${localstatedir}/log/@PACKAGE@
-pkgdocdir = $(datadir)/doc/@PACKAGE@-@PACKAGE_VERSION@
-shirelogdir = ${localstatedir}/log/httpd
+pkgdocdir = ${datadir}/doc/@PACKAGE@
+shirelogdir = ${localstatedir}/log/apache2
 pkgxmldir = $(datadir)/xml/@PACKAGE@
 pkgrundir = $(localstatedir)/run/@PACKAGE@
 pkgsysconfdir = $(sysconfdir)/@PACKAGE@

@@ -42,7 +42,7 @@ DIST_COMMON = $(attrfiltinclude_HEADERS) $(attrinclude_HEADERS) \
 	$(liteinclude_HEADERS) $(mdinclude_HEADERS) $(noinst_HEADERS) \
 	$(reminclude_HEADERS) $(secinclude_HEADERS) \
 	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
-	$(utilinclude_HEADERS)
+	$(srcdir)/config_pub.h.in $(utilinclude_HEADERS)
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/acinclude.m4 \
 	$(top_srcdir)/m4/acx_pthread.m4 $(top_srcdir)/m4/doxygen.m4 \
@@ -52,7 +52,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/acinclude.m4 \
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
-CONFIG_HEADER = $(top_builddir)/config.h
+CONFIG_HEADER = $(top_builddir)/config.h config_pub.h
 CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
@@ -90,7 +90,9 @@ libshibsp_lite_la_DEPENDENCIES = $(am__DEPENDENCIES_1)
 am__objects_1 = libshibsp_lite_la-AbstractSPRequest.lo \
 	libshibsp_lite_la-Application.lo \
 	libshibsp_lite_la-ServiceProvider.lo \
-	libshibsp_lite_la-SPConfig.lo libshibsp_lite_la-Attribute.lo \
+	libshibsp_lite_la-SPConfig.lo libshibsp_lite_la-version.lo \
+	libshibsp_lite_la-Attribute.lo \
+	libshibsp_lite_la-BinaryAttribute.lo \
 	libshibsp_lite_la-ExtensibleAttribute.lo \
 	libshibsp_lite_la-NameIDAttribute.lo \
 	libshibsp_lite_la-SimpleAttribute.lo \
@@ -146,17 +148,18 @@ libshibsp_lite_la_LINK = $(LIBTOOL) --tag=CXX $(AM_LIBTOOLFLAGS) \
 	$(CXXFLAGS) $(libshibsp_lite_la_LDFLAGS) $(LDFLAGS) -o $@
 libshibsp_la_DEPENDENCIES = $(am__DEPENDENCIES_1)
 am__objects_2 = AbstractSPRequest.lo Application.lo ServiceProvider.lo \
-	SPConfig.lo Attribute.lo ExtensibleAttribute.lo \
-	NameIDAttribute.lo SimpleAttribute.lo ScopedAttribute.lo \
-	XMLAttribute.lo XMLProtocolProvider.lo AbstractHandler.lo \
-	AssertionConsumerService.lo AssertionLookup.lo \
-	ChainingLogoutInitiator.lo ChainingSessionInitiator.lo \
-	CookieSessionInitiator.lo DiscoveryFeed.lo \
-	FormSessionInitiator.lo LocalLogoutInitiator.lo \
-	LogoutHandler.lo LogoutInitiator.lo MetadataGenerator.lo \
-	RemotedHandler.lo StatusHandler.lo SessionHandler.lo \
-	SAML1Consumer.lo SAML2Consumer.lo SAML2ArtifactResolution.lo \
-	SAML2Logout.lo SAML2LogoutInitiator.lo SAML2NameIDMgmt.lo \
+	SPConfig.lo version.lo Attribute.lo BinaryAttribute.lo \
+	ExtensibleAttribute.lo NameIDAttribute.lo SimpleAttribute.lo \
+	ScopedAttribute.lo XMLAttribute.lo XMLProtocolProvider.lo \
+	AbstractHandler.lo AssertionConsumerService.lo \
+	AssertionLookup.lo ChainingLogoutInitiator.lo \
+	ChainingSessionInitiator.lo CookieSessionInitiator.lo \
+	DiscoveryFeed.lo FormSessionInitiator.lo \
+	LocalLogoutInitiator.lo LogoutHandler.lo LogoutInitiator.lo \
+	MetadataGenerator.lo RemotedHandler.lo StatusHandler.lo \
+	SessionHandler.lo SAML1Consumer.lo SAML2Consumer.lo \
+	SAML2ArtifactResolution.lo SAML2Logout.lo \
+	SAML2LogoutInitiator.lo SAML2NameIDMgmt.lo \
 	SAML2SessionInitiator.lo SAMLDSSessionInitiator.lo \
 	SessionInitiator.lo Shib1SessionInitiator.lo \
 	TransformSessionInitiator.lo WAYFSessionInitiator.lo \
@@ -418,6 +421,7 @@ libshibspinclude_HEADERS = \
 	AccessControl.h \
 	Application.h \
 	base.h \
+	config_pub.h \
 	exceptions.h \
 	paths.h \
 	GSSRequest.h \
@@ -433,6 +437,7 @@ libshibspinclude_HEADERS = \
 attrinclude_HEADERS = \
 	attribute/Attribute.h \
 	attribute/AttributeDecoder.h \
+	attribute/BinaryAttribute.h \
 	attribute/ExtensibleAttribute.h \
 	attribute/NameIDAttribute.h \
 	attribute/ScopedAttribute.h \
@@ -498,7 +503,9 @@ common_sources = \
 	Application.cpp \
 	ServiceProvider.cpp \
 	SPConfig.cpp \
+    version.cpp \
 	attribute/Attribute.cpp \
+	attribute/BinaryAttribute.cpp \
 	attribute/ExtensibleAttribute.cpp \
 	attribute/NameIDAttribute.cpp \
 	attribute/SimpleAttribute.cpp \
@@ -607,9 +614,9 @@ libshibsp_la_SOURCES = \
 
 # this is different from the project version
 # http://sources.redhat.com/autobook/autobook/autobook_91.html
-libshibsp_la_LDFLAGS = -version-info 5:2:0
+libshibsp_la_LDFLAGS = -version-info 6:0:0
 libshibsp_la_LIBADD = $(XMLSEC_LIBS)
-libshibsp_lite_la_LDFLAGS = -version-info 5:2:0
+libshibsp_lite_la_LDFLAGS = -version-info 6:0:0
 libshibsp_lite_la_LIBADD = $(LITE_LIBS)
 libshibsp_lite_la_CPPFLAGS = -DSHIBSP_LITE
 pkgsysconfdir = $(sysconfdir)/@PACKAGE_NAME@
@@ -622,12 +629,14 @@ EXTRA_DIST = \
 	shibsp-lite.vcxproj \
 	shibsp.vcxproj.filters \
 	shibsp-lite.vcxproj.filters \
+	config_pub.h.in \
+    config_pub_win32.h\
 	paths.h.in \
 	resource.h \
 	shibsp.rc
 
 BUILT_SOURCES = paths.h
-all: $(BUILT_SOURCES)
+all: $(BUILT_SOURCES) config_pub.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
 .SUFFIXES:
@@ -662,6 +671,23 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
+
+config_pub.h: stamp-h2
+	@if test ! -f $@; then \
+	  rm -f stamp-h2; \
+	  $(MAKE) $(AM_MAKEFLAGS) stamp-h2; \
+	else :; fi
+
+stamp-h2: $(srcdir)/config_pub.h.in $(top_builddir)/config.status
+	@rm -f stamp-h2
+	cd $(top_builddir) && $(SHELL) ./config.status shibsp/config_pub.h
+$(srcdir)/config_pub.h.in:  $(am__configure_deps) 
+	($(am__cd) $(top_srcdir) && $(AUTOHEADER))
+	rm -f stamp-h2
+	touch $@
+
+distclean-hdr:
+	-rm -f config_pub.h stamp-h2
 install-libLTLIBRARIES: $(lib_LTLIBRARIES)
 	@$(NORMAL_INSTALL)
 	test -z "$(libdir)" || $(MKDIR_P) "$(DESTDIR)$(libdir)"
@@ -729,6 +755,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AuthenticationMethodStringFunctor.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Base64AttributeDecoder.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/BasicFilteringContext.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/BinaryAttribute.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/CGIParser.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ChainingAccessControl.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ChainingAttributeExtractor.Plo@am__quote@
@@ -811,6 +838,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-AssertionConsumerService.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-AssertionLookup.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-Attribute.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-BinaryAttribute.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-CGIParser.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-ChainingAccessControl.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-ChainingLogoutInitiator.Plo@am__quote@
@@ -859,6 +887,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-XMLRequestMapper.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-XMLServiceProvider.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-ddf.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libshibsp_lite_la-version.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/version.Plo@am__quote@
 
 .cpp.o:
 @am__fastdepCXX_TRUE@	$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -909,12 +939,26 @@ libshibsp_lite_la-SPConfig.lo: SPConfig.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libshibsp_lite_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libshibsp_lite_la-SPConfig.lo `test -f 'SPConfig.cpp' || echo '$(srcdir)/'`SPConfig.cpp
 
+libshibsp_lite_la-version.lo: version.cpp
+@am__fastdepCXX_TRUE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libshibsp_lite_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libshibsp_lite_la-version.lo -MD -MP -MF $(DEPDIR)/libshibsp_lite_la-version.Tpo -c -o libshibsp_lite_la-version.lo `test -f 'version.cpp' || echo '$(srcdir)/'`version.cpp
+@am__fastdepCXX_TRUE@	$(am__mv) $(DEPDIR)/libshibsp_lite_la-version.Tpo $(DEPDIR)/libshibsp_lite_la-version.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='version.cpp' object='libshibsp_lite_la-version.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libshibsp_lite_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libshibsp_lite_la-version.lo `test -f 'version.cpp' || echo '$(srcdir)/'`version.cpp
+
 libshibsp_lite_la-Attribute.lo: attribute/Attribute.cpp
 @am__fastdepCXX_TRUE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libshibsp_lite_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libshibsp_lite_la-Attribute.lo -MD -MP -MF $(DEPDIR)/libshibsp_lite_la-Attribute.Tpo -c -o libshibsp_lite_la-Attribute.lo `test -f 'attribute/Attribute.cpp' || echo '$(srcdir)/'`attribute/Attribute.cpp
 @am__fastdepCXX_TRUE@	$(am__mv) $(DEPDIR)/libshibsp_lite_la-Attribute.Tpo $(DEPDIR)/libshibsp_lite_la-Attribute.Plo
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='attribute/Attribute.cpp' object='libshibsp_lite_la-Attribute.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libshibsp_lite_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libshibsp_lite_la-Attribute.lo `test -f 'attribute/Attribute.cpp' || echo '$(srcdir)/'`attribute/Attribute.cpp
+
+libshibsp_lite_la-BinaryAttribute.lo: attribute/BinaryAttribute.cpp
+@am__fastdepCXX_TRUE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libshibsp_lite_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libshibsp_lite_la-BinaryAttribute.lo -MD -MP -MF $(DEPDIR)/libshibsp_lite_la-BinaryAttribute.Tpo -c -o libshibsp_lite_la-BinaryAttribute.lo `test -f 'attribute/BinaryAttribute.cpp' || echo '$(srcdir)/'`attribute/BinaryAttribute.cpp
+@am__fastdepCXX_TRUE@	$(am__mv) $(DEPDIR)/libshibsp_lite_la-BinaryAttribute.Tpo $(DEPDIR)/libshibsp_lite_la-BinaryAttribute.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='attribute/BinaryAttribute.cpp' object='libshibsp_lite_la-BinaryAttribute.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libshibsp_lite_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libshibsp_lite_la-BinaryAttribute.lo `test -f 'attribute/BinaryAttribute.cpp' || echo '$(srcdir)/'`attribute/BinaryAttribute.cpp
 
 libshibsp_lite_la-ExtensibleAttribute.lo: attribute/ExtensibleAttribute.cpp
 @am__fastdepCXX_TRUE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libshibsp_lite_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libshibsp_lite_la-ExtensibleAttribute.lo -MD -MP -MF $(DEPDIR)/libshibsp_lite_la-ExtensibleAttribute.Tpo -c -o libshibsp_lite_la-ExtensibleAttribute.lo `test -f 'attribute/ExtensibleAttribute.cpp' || echo '$(srcdir)/'`attribute/ExtensibleAttribute.cpp
@@ -1265,6 +1309,13 @@ Attribute.lo: attribute/Attribute.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='attribute/Attribute.cpp' object='Attribute.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o Attribute.lo `test -f 'attribute/Attribute.cpp' || echo '$(srcdir)/'`attribute/Attribute.cpp
+
+BinaryAttribute.lo: attribute/BinaryAttribute.cpp
+@am__fastdepCXX_TRUE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT BinaryAttribute.lo -MD -MP -MF $(DEPDIR)/BinaryAttribute.Tpo -c -o BinaryAttribute.lo `test -f 'attribute/BinaryAttribute.cpp' || echo '$(srcdir)/'`attribute/BinaryAttribute.cpp
+@am__fastdepCXX_TRUE@	$(am__mv) $(DEPDIR)/BinaryAttribute.Tpo $(DEPDIR)/BinaryAttribute.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='attribute/BinaryAttribute.cpp' object='BinaryAttribute.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o BinaryAttribute.lo `test -f 'attribute/BinaryAttribute.cpp' || echo '$(srcdir)/'`attribute/BinaryAttribute.cpp
 
 ExtensibleAttribute.lo: attribute/ExtensibleAttribute.cpp
 @am__fastdepCXX_TRUE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ExtensibleAttribute.lo -MD -MP -MF $(DEPDIR)/ExtensibleAttribute.Tpo -c -o ExtensibleAttribute.lo `test -f 'attribute/ExtensibleAttribute.cpp' || echo '$(srcdir)/'`attribute/ExtensibleAttribute.cpp
@@ -2174,11 +2225,11 @@ ID: $(HEADERS) $(SOURCES) $(LISP) $(TAGS_FILES)
 	mkid -fID $$unique
 tags: TAGS
 
-TAGS:  $(HEADERS) $(SOURCES)  $(TAGS_DEPENDENCIES) \
+TAGS:  $(HEADERS) $(SOURCES) config_pub.h.in $(TAGS_DEPENDENCIES) \
 		$(TAGS_FILES) $(LISP)
 	set x; \
 	here=`pwd`; \
-	list='$(SOURCES) $(HEADERS)  $(LISP) $(TAGS_FILES)'; \
+	list='$(SOURCES) $(HEADERS) config_pub.h.in $(LISP) $(TAGS_FILES)'; \
 	unique=`for i in $$list; do \
 	    if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
 	  done | \
@@ -2196,9 +2247,9 @@ TAGS:  $(HEADERS) $(SOURCES)  $(TAGS_DEPENDENCIES) \
 	  fi; \
 	fi
 ctags: CTAGS
-CTAGS:  $(HEADERS) $(SOURCES)  $(TAGS_DEPENDENCIES) \
+CTAGS:  $(HEADERS) $(SOURCES) config_pub.h.in $(TAGS_DEPENDENCIES) \
 		$(TAGS_FILES) $(LISP)
-	list='$(SOURCES) $(HEADERS)  $(LISP) $(TAGS_FILES)'; \
+	list='$(SOURCES) $(HEADERS) config_pub.h.in $(LISP) $(TAGS_FILES)'; \
 	unique=`for i in $$list; do \
 	    if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
 	  done | \
@@ -2249,7 +2300,7 @@ distdir: $(DISTFILES)
 check-am: all-am
 check: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) check-am
-all-am: Makefile $(LTLIBRARIES) $(HEADERS)
+all-am: Makefile $(LTLIBRARIES) $(HEADERS) config_pub.h
 installdirs:
 	for dir in "$(DESTDIR)$(libdir)" "$(DESTDIR)$(attrfiltincludedir)" "$(DESTDIR)$(attrincludedir)" "$(DESTDIR)$(attrresincludedir)" "$(DESTDIR)$(bindincludedir)" "$(DESTDIR)$(handincludedir)" "$(DESTDIR)$(libshibspincludedir)" "$(DESTDIR)$(liteincludedir)" "$(DESTDIR)$(mdincludedir)" "$(DESTDIR)$(remincludedir)" "$(DESTDIR)$(secincludedir)" "$(DESTDIR)$(utilincludedir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
@@ -2290,7 +2341,7 @@ distclean: distclean-am
 	-rm -rf ./$(DEPDIR)
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
-	distclean-tags
+	distclean-hdr distclean-tags
 
 dvi: dvi-am
 
@@ -2368,24 +2419,24 @@ uninstall-am: uninstall-attrfiltincludeHEADERS \
 
 .PHONY: CTAGS GTAGS all all-am check check-am clean clean-generic \
 	clean-libLTLIBRARIES clean-libtool ctags distclean \
-	distclean-compile distclean-generic distclean-libtool \
-	distclean-tags distdir dvi dvi-am html html-am info info-am \
-	install install-am install-attrfiltincludeHEADERS \
-	install-attrincludeHEADERS install-attrresincludeHEADERS \
-	install-bindincludeHEADERS install-data install-data-am \
-	install-dvi install-dvi-am install-exec install-exec-am \
-	install-exec-hook install-handincludeHEADERS install-html \
-	install-html-am install-info install-info-am \
-	install-libLTLIBRARIES install-libshibspincludeHEADERS \
-	install-liteincludeHEADERS install-man \
-	install-mdincludeHEADERS install-pdf install-pdf-am install-ps \
-	install-ps-am install-remincludeHEADERS \
-	install-secincludeHEADERS install-strip \
-	install-utilincludeHEADERS installcheck installcheck-am \
-	installdirs maintainer-clean maintainer-clean-generic \
-	mostlyclean mostlyclean-compile mostlyclean-generic \
-	mostlyclean-libtool pdf pdf-am ps ps-am tags uninstall \
-	uninstall-am uninstall-attrfiltincludeHEADERS \
+	distclean-compile distclean-generic distclean-hdr \
+	distclean-libtool distclean-tags distdir dvi dvi-am html \
+	html-am info info-am install install-am \
+	install-attrfiltincludeHEADERS install-attrincludeHEADERS \
+	install-attrresincludeHEADERS install-bindincludeHEADERS \
+	install-data install-data-am install-dvi install-dvi-am \
+	install-exec install-exec-am install-exec-hook \
+	install-handincludeHEADERS install-html install-html-am \
+	install-info install-info-am install-libLTLIBRARIES \
+	install-libshibspincludeHEADERS install-liteincludeHEADERS \
+	install-man install-mdincludeHEADERS install-pdf \
+	install-pdf-am install-ps install-ps-am \
+	install-remincludeHEADERS install-secincludeHEADERS \
+	install-strip install-utilincludeHEADERS installcheck \
+	installcheck-am installdirs maintainer-clean \
+	maintainer-clean-generic mostlyclean mostlyclean-compile \
+	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
+	tags uninstall uninstall-am uninstall-attrfiltincludeHEADERS \
 	uninstall-attrincludeHEADERS uninstall-attrresincludeHEADERS \
 	uninstall-bindincludeHEADERS uninstall-handincludeHEADERS \
 	uninstall-libLTLIBRARIES uninstall-libshibspincludeHEADERS \

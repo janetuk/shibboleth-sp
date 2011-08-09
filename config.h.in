@@ -16,8 +16,8 @@
 /* Define to 1 if you have the `gmtime_r' function. */
 #undef HAVE_GMTIME_R
 
-/* if you have the gssapi libraries */
-#undef HAVE_GSSAPI
+/* Define to 1 if GSS-API composite name import is available. */
+#undef HAVE_GSSAPI_COMPOSITE_NAME
 
 /* Define to 1 if you have the <gssapi/gssapi_generic.h> header file. */
 #undef HAVE_GSSAPI_GSSAPI_GENERIC_H
@@ -28,14 +28,8 @@
 /* Define to 1 if you have the <gssapi/gssapi_krb5.h> header file. */
 #undef HAVE_GSSAPI_GSSAPI_KRB5_H
 
-/* if you have the GNU gssapi libraries */
-#undef HAVE_GSSGNU
-
-/* if you have the Heimdal gssapi libraries */
-#undef HAVE_GSSHEIMDAL
-
-/* if you have the MIT gssapi libraries */
-#undef HAVE_GSSMIT
+/* Define to 1 if GSS-API naming extensions are available. */
+#undef HAVE_GSSAPI_NAMINGEXTS
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
@@ -129,6 +123,18 @@
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */
 #undef PTHREAD_CREATE_JOINABLE
+
+/* if you have the gssapi libraries */
+#undef SHIBSP_HAVE_GSSAPI
+
+/* if you have the GNU gssapi libraries */
+#undef SHIBSP_HAVE_GSSGNU
+
+/* if you have the Heimdal gssapi libraries */
+#undef SHIBSP_HAVE_GSSHEIMDAL
+
+/* if you have the MIT gssapi libraries */
+#undef SHIBSP_HAVE_GSSMIT
 
 /* Define to 1 if log4cpp library is used. */
 #undef SHIBSP_LOG4CPP
