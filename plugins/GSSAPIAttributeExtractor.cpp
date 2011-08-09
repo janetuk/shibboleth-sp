@@ -27,6 +27,7 @@
 #include <shibsp/exceptions.h>
 #include <shibsp/Application.h>
 #include <shibsp/SPConfig.h>
+#include <shibsp/attribute/BinaryAttribute.h>
 #include <shibsp/attribute/ScopedAttribute.h>
 #include <shibsp/attribute/SimpleAttribute.h>
 #include <shibsp/attribute/resolver/AttributeExtractor.h>
@@ -43,7 +44,14 @@
 #include <xercesc/util/Base64.hpp>
 #include <xercesc/util/XMLUniDefs.hpp>
 
-#include <gssapi/gssapi_ext.h>
+#ifdef SHIBSP_HAVE_GSSGNU
+# include <gss.h>
+#elif defined SHIBSP_HAVE_GSSMIT
+# include <gssapi/gssapi_ext.h>
+#else
+# include <gssapi.h>
+#endif
+
 
 using namespace shibsp;
 using namespace opensaml::saml2md;
@@ -80,9 +88,9 @@ namespace shibsp {
 
     private:
         struct Rule {
-            Rule() : authenticated(true), scopeDelimiter(0) {}
+            Rule() : authenticated(true), binary(false), scopeDelimiter(0) {}
             vector<string> ids;
-            bool authenticated;
+            bool authenticated,binary;
             char scopeDelimiter;
         };
 
@@ -135,6 +143,7 @@ namespace shibsp {
     static const XMLCh _aliases[] =             UNICODE_LITERAL_7(a,l,i,a,s,e,s);
     static const XMLCh Attributes[] =           UNICODE_LITERAL_10(A,t,t,r,i,b,u,t,e,s);
     static const XMLCh _authenticated[] =       UNICODE_LITERAL_13(a,u,t,h,e,n,t,i,c,a,t,e,d);
+    static const XMLCh _binary[] =              UNICODE_LITERAL_6(b,i,n,a,r,y);
     static const XMLCh GSSAPIAttribute[] =      UNICODE_LITERAL_15(G,S,S,A,P,I,A,t,t,r,i,b,u,t,e);
     static const XMLCh _id[] =                  UNICODE_LITERAL_2(i,d);
     static const XMLCh _name[] =                UNICODE_LITERAL_4(n,a,m,e);
@@ -212,6 +221,7 @@ GSSAPIExtractorImpl::GSSAPIExtractorImpl(const DOMElement* e, Category& log)
         }
 
         decl.authenticated = XMLHelper::getAttrBool(child, true, _authenticated);
+        decl.binary = XMLHelper::getAttrBool(child, false, _binary);
         string delim = XMLHelper::getAttrString(child, "", _scopeDelimiter);
         if (!delim.empty())
             decl.scopeDelimiter = delim[0];
@@ -263,8 +273,9 @@ void GSSAPIExtractorImpl::extractAttributes(
                 gss_release_buffer(&minor, &buf);
                 return;
             }
-            if (buf.length)
+            if (buf.length) {
                 values.push_back(string(reinterpret_cast<char*>(buf.value), buf.length));
+            }
             gss_release_buffer(&minor, &buf);
         }
         else {
@@ -275,7 +286,7 @@ void GSSAPIExtractorImpl::extractAttributes(
     if (values.empty())
         return;
 
-    if (rule->second.scopeDelimiter) {
+    if (rule->second.scopeDelimiter && !rule->second.binary) {
         auto_ptr<ScopedAttribute> scoped(new ScopedAttribute(rule->second.ids, rule->second.scopeDelimiter));
         vector< pair<string,string> >& dest = scoped->getValues();
         for (vector<string>::const_iterator v = values.begin(); v != values.end(); ++v) {
@@ -294,8 +305,12 @@ void GSSAPIExtractorImpl::extractAttributes(
         if (!scoped->getValues().empty())
             attributes.push_back(scoped.release());
     }
+    else if (rule->second.binary) {
+        auto_ptr<BinaryAttribute> binary(new BinaryAttribute(rule->second.ids));
+        binary->getValues() = values;
+        attributes.push_back(binary.release());
+    }
     else {
-        // If unscoped, just copy over the values.
         auto_ptr<SimpleAttribute> simple(new SimpleAttribute(rule->second.ids));
         simple->getValues() = values;
         attributes.push_back(simple.release());
