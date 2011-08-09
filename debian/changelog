@@ -1,3 +1,9 @@
+shibboleth-sp2 (2.5+dfsg~moonshot2-1) unstable; urgency=low
+
+  * Update to new prerelease
+
+ -- Sam Hartman <hartmans@project-moonshot.org>  Tue, 09 Aug 2011 12:56:33 -0400
+
 shibboleth-sp2 (2.5+dfsg~moonshot1-1) unstable; urgency=low
 
   * New moonshot pre-release
