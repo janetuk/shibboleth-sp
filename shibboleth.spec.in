@@ -17,6 +17,7 @@ BuildRequires:  libxerces-c-devel >= 2.8.0
 %endif
 BuildRequires:  libxml-security-c-devel >= 1.4.0
 BuildRequires:  libxmltooling-devel >= 1.4
+BuildRequires: krb5-moonshot-devel
 BuildRequires:  libsaml-devel >= 2.4
 %{?_with_log4cpp:BuildRequires: liblog4cpp-devel >= 1.0}
 %{!?_with_log4cpp:BuildRequires: liblog4shib-devel}
@@ -72,7 +73,7 @@ This package includes files needed for development with Shibboleth.
 %setup -q
 
 %build
-%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{?_with_memcached} %{?shib_options}
+%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{?_with_memcached} %{?shib_options} --with-gssapi=%{_prefix} --with-xmltooling=%{_prefix}
 %{__make} pkgdocdir=%{pkgdocdir}
 
 %install
