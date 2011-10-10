@@ -1,17 +1,21 @@
-/*
- *  Copyright 2001-2010 Internet2
+/**
+ * Licensed to the University Corporation for Advanced Internet
+ * Development, Inc. (UCAID) under one or more contributor license
+ * agreements. See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * UCAID licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific
+ * language governing permissions and limitations under the License.
  */
 
 /**
@@ -119,8 +123,8 @@ pair<bool,long> SessionHandler::run(SPRequest& request, bool isHandler) const
         if (!session) {
             s << "A valid session was not found.</pre></body></html>" << endl;
             request.setContentType("text/html");
-            request.setResponseHeader("Expires","01-Jan-1997 12:00:00 GMT");
-            request.setResponseHeader("Cache-Control","private,no-store,no-cache");
+            request.setResponseHeader("Expires","Wed, 01 Jan 1997 12:00:00 GMT");
+            request.setResponseHeader("Cache-Control","private,no-store,no-cache,max-age=0");
             return make_pair(true, request.sendResponse(s));
         }
     }
@@ -128,8 +132,8 @@ pair<bool,long> SessionHandler::run(SPRequest& request, bool isHandler) const
         s << "Exception while retrieving active session:" << endl
             << '\t' << ex.what() << "</pre></body></html>" << endl;
         request.setContentType("text/html");
-        request.setResponseHeader("Expires","01-Jan-1997 12:00:00 GMT");
-        request.setResponseHeader("Cache-Control","private,no-store,no-cache");
+        request.setResponseHeader("Expires","Wed, 01 Jan 1997 12:00:00 GMT");
+        request.setResponseHeader("Cache-Control","private,no-store,no-cache,max-age=0");
         return make_pair(true, request.sendResponse(s));
     }
 
@@ -194,7 +198,7 @@ pair<bool,long> SessionHandler::run(SPRequest& request, bool isHandler) const
 
     s << "</pre></body></html>";
     request.setContentType("text/html; charset=UTF-8");
-    request.setResponseHeader("Expires","01-Jan-1997 12:00:00 GMT");
-    request.setResponseHeader("Cache-Control","private,no-store,no-cache");
+    request.setResponseHeader("Expires","Wed, 01 Jan 1997 12:00:00 GMT");
+    request.setResponseHeader("Cache-Control","private,no-store,no-cache,max-age=0");
     return make_pair(true, request.sendResponse(s));
 }

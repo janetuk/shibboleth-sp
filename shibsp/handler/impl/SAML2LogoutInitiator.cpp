@@ -1,17 +1,21 @@
-/*
- *  Copyright 2001-2011 Internet2
+/**
+ * Licensed to the University Corporation for Advanced Internet
+ * Development, Inc. (UCAID) under one or more contributor license
+ * agreements. See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * UCAID licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific
+ * language governing permissions and limitations under the License.
  */
 
 /**
@@ -71,6 +75,8 @@ namespace shibsp {
 #endif
         }
 
+        void init(const char* location);    // encapsulates actions that need to run either in the c'tor or setParent
+
         void setParent(const PropertySet* parent);
         void receive(DDF& in, ostream& out);
         pair<bool,long> run(SPRequest& request, bool isHandler=true) const;
@@ -114,6 +120,30 @@ SAML2LogoutInitiator::SAML2LogoutInitiator(const DOMElement* e, const char* appI
 #endif
         m_protocol(samlconstants::SAML20P_NS)
 {
+    // If Location isn't set, defer initialization until the setParent call.
+    pair<bool,const char*> loc = getString("Location");
+    if (loc.first) {
+        init(loc.second);
+    }
+}
+
+void SAML2LogoutInitiator::setParent(const PropertySet* parent)
+{
+    DOMPropertySet::setParent(parent);
+    pair<bool,const char*> loc = getString("Location");
+    init(loc.second);
+}
+
+void SAML2LogoutInitiator::init(const char* location)
+{
+    if (location) {
+        string address = m_appId + location + "::run::SAML2LI";
+        setAddress(address.c_str());
+    }
+    else {
+        m_log.warn("no Location property in SAML2 LogoutInitiator (or parent), can't register as remoted handler");
+    }
+
 #ifndef SHIBSP_LITE
     if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
         // Handle outgoing binding setup.
@@ -139,7 +169,7 @@ SAML2LogoutInitiator::SAML2LogoutInitiator(const DOMElement* e, const char* appI
             try {
                 auto_ptr_char b(start);
                 MessageEncoder * encoder =
-                    SAMLConfig::getConfig().MessageEncoderManager.newPlugin(b.get(),pair<const DOMElement*,const XMLCh*>(e,nullptr));
+                    SAMLConfig::getConfig().MessageEncoderManager.newPlugin(b.get(), pair<const DOMElement*,const XMLCh*>(getElement(), nullptr));
                 if (encoder->isUserAgentPresent() && XMLString::equals(getProtocolFamily(), encoder->getProtocolFamily())) {
                     m_encoders[start] = encoder;
                     m_log.debug("supporting outgoing binding (%s)", b.get());
@@ -159,26 +189,8 @@ SAML2LogoutInitiator::SAML2LogoutInitiator(const DOMElement* e, const char* appI
         }
     }
 #endif
-
-    pair<bool,const char*> loc = getString("Location");
-    if (loc.first) {
-        string address = m_appId + loc.second + "::run::SAML2LI";
-        setAddress(address.c_str());
-    }
 }
 
-void SAML2LogoutInitiator::setParent(const PropertySet* parent)
-{
-    DOMPropertySet::setParent(parent);
-    pair<bool,const char*> loc = getString("Location");
-    if (loc.first) {
-        string address = m_appId + loc.second + "::run::SAML2LI";
-        setAddress(address.c_str());
-    }
-    else {
-        m_log.warn("no Location property in SAML2 LogoutInitiator (or parent), can't register as remoted handler");
-    }
-}
 
 pair<bool,long> SAML2LogoutInitiator::run(SPRequest& request, bool isHandler) const
 {

@@ -1,17 +1,21 @@
-/*
- *  Copyright 2001-2011 Internet2
+/**
+ * Licensed to the University Corporation for Advanced Internet
+ * Development, Inc. (UCAID) under one or more contributor license
+ * agreements. See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * UCAID licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific
+ * language governing permissions and limitations under the License.
  */
 
 /**
@@ -310,6 +314,33 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
     const vector<const Assertion*>* tokens
     ) const
 {
+    return resolveAttributes(
+        application,
+        issuer,
+        protocol,
+        v1nameid,
+        nullptr,
+        nameid,
+        nullptr,
+        authncontext_class,
+        authncontext_decl,
+        tokens
+        );
+}
+
+ResolutionContext* AssertionConsumerService::resolveAttributes(
+    const Application& application,
+    const saml2md::RoleDescriptor* issuer,
+    const XMLCh* protocol,
+    const saml1::NameIdentifier* v1nameid,
+    const saml1::AuthenticationStatement* v1statement,
+    const saml2::NameID* nameid,
+    const saml2::AuthnStatement* statement,
+    const XMLCh* authncontext_class,
+    const XMLCh* authncontext_decl,
+    const vector<const Assertion*>* tokens
+    ) const
+{
     // First we do the extraction of any pushed information, including from metadata.
     vector<Attribute*> resolvedAttributes;
     AttributeExtractor* extractor = application.getAttributeExtractor();
@@ -333,23 +364,33 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
                 }
             }
         }
+
         m_log.debug("extracting pushed attributes...");
-        if (v1nameid) {
+
+        if (v1nameid || nameid) {
             try {
-                extractor->extractAttributes(application, issuer, *v1nameid, resolvedAttributes);
+                if (v1nameid)
+                    extractor->extractAttributes(application, issuer, *v1nameid, resolvedAttributes);
+                else
+                    extractor->extractAttributes(application, issuer, *nameid, resolvedAttributes);
             }
             catch (exception& ex) {
                 m_log.error("caught exception extracting attributes: %s", ex.what());
             }
         }
-        else if (nameid) {
+
+        if (v1statement || statement) {
             try {
-                extractor->extractAttributes(application, issuer, *nameid, resolvedAttributes);
+                if (v1statement)
+                    extractor->extractAttributes(application, issuer, *v1statement, resolvedAttributes);
+                else
+                    extractor->extractAttributes(application, issuer, *statement, resolvedAttributes);
             }
             catch (exception& ex) {
                 m_log.error("caught exception extracting attributes: %s", ex.what());
             }
         }
+
         if (tokens) {
             for (vector<const Assertion*>::const_iterator t = tokens->begin(); t!=tokens->end(); ++t) {
                 try {
@@ -471,7 +512,9 @@ void AssertionConsumerService::maintainHistory(
     pair<bool,bool> idpHistory=sessionProps->getBool("idpHistory");
 
     if (idpHistory.first && idpHistory.second) {
-        pair<bool,const char*> cookieProps=sessionProps->getString("cookieProps");
+        pair<bool,const char*> cookieProps=sessionProps->getString("idpHistoryProps");
+        if (!cookieProps.first)
+            cookieProps=sessionProps->getString("cookieProps");
         if (!cookieProps.first)
             cookieProps.second=defProps;
 

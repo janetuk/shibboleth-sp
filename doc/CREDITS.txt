@@ -25,16 +25,15 @@ Shibboleth Implementation Team
    wassa@memphis.edu
 
    Chad LaJoie
-   Georgetown University
-   lajoie@georgetown.edu
+   Itumi, LLC.
+   lajoie@itumi.biz
 
    Derek Morr
    Penn State University
    dvm105@psu.edu
 
    Will Norris
-   USC
-   wnorris@usc.edu
+   will@willnorris.com
    
    Brent Putman
    Georgetown University
@@ -85,7 +84,7 @@ Thanks to:
 
     Vishal Goenka (SunGard SCT) for contributing some useful resolver plugins
 
-	Ian Young for donating XSLT scripts for converting metadata across
-	  Shibboleth versions
+    Ian Young for donating XSLT scripts for converting metadata across
+      Shibboleth versions
     
     Kaspar Brand for assisting in the development of CRL-related functionality

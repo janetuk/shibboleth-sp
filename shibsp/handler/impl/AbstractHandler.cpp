@@ -1,17 +1,21 @@
-/*
- *  Copyright 2001-2011 Internet2
+/**
+ * Licensed to the University Corporation for Advanced Internet
+ * Development, Inc. (UCAID) under one or more contributor license
+ * agreements. See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * UCAID licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific
+ * language governing permissions and limitations under the License.
  */
 
 /**
@@ -286,10 +290,12 @@ void Handler::preserveRelayState(const Application& application, HTTPResponse& r
 #ifndef SHIBSP_LITE
                     StorageService* storage = application.getServiceProvider().getStorageService(mech.second);
                     if (storage) {
+                        // Use a random key
                         string rsKey;
-                        generateRandomHex(rsKey,32);
+                        SAMLConfig::getConfig().generateRandomBytes(rsKey,32);
+                        rsKey = SAMLArtifact::toHex(rsKey);
                         if (!storage->createString("RelayState", rsKey.c_str(), relayState.c_str(), time(nullptr) + 600))
-                            throw IOException("Attempted to insert duplicate storage key.");
+                            throw IOException("Collision generating in-memory relay state key.");
                         relayState = string(mech.second-3) + ':' + rsKey;
                     }
                     else {
@@ -298,6 +304,8 @@ void Handler::preserveRelayState(const Application& application, HTTPResponse& r
                         log(SPRequest::SPError, msg);
                         relayState.erase();
                     }
+#else
+                    throw ConfigurationException("Lite version of library cannot be used out of process.");
 #endif
                 }
                 else if (SPConfig::getConfig().isEnabled(SPConfig::InProcess)) {
@@ -639,6 +647,8 @@ void AbstractHandler::preservePostData(
             else {
                 m_log.error("storage-backed PostData mechanism with invalid StorageService ID (%s)", mech.second);
             }
+#else
+            throw ConfigurationException("Lite version of library cannot be used out of process.");
 #endif
         }
         else if (SPConfig::getConfig().isEnabled(SPConfig::InProcess)) {
@@ -758,8 +768,8 @@ long AbstractHandler::sendPostResponse(
 
     httpResponse.setContentType("text/html");
     if (!postExpire.first || postExpire.second) {
-        httpResponse.setResponseHeader("Expires", "01-Jan-1997 12:00:00 GMT");
-        httpResponse.setResponseHeader("Cache-Control", "no-cache, no-store, must-revalidate, private");
+        httpResponse.setResponseHeader("Expires", "Wed, 01 Jan 1997 12:00:00 GMT");
+        httpResponse.setResponseHeader("Cache-Control", "no-cache, no-store, must-revalidate, private, max-age=0");
         httpResponse.setResponseHeader("Pragma", "no-cache");
     }
     return httpResponse.sendResponse(str);
@@ -785,7 +795,7 @@ pair<string,const char*> AbstractHandler::getPostCookieNameProps(const Applicati
 DDF AbstractHandler::getPostData(const Application& application, const HTTPRequest& request) const
 {
     string contentType = request.getContentType();
-    if (contentType.compare("application/x-www-form-urlencoded") == 0) {
+    if (contentType.find("application/x-www-form-urlencoded") != string::npos) {
         const PropertySet* props=application.getPropertySet("Sessions");
         pair<bool,unsigned int> plimit = props ? props->getUnsignedInt("postLimit") : pair<bool,unsigned int>(false,0);
         if (!plimit.first)
