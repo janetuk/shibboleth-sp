@@ -1,17 +1,21 @@
-/*
- *  Copyright 2001-2010 Internet2
+/**
+ * Licensed to the University Corporation for Advanced Internet
+ * Development, Inc. (UCAID) under one or more contributor license
+ * agreements. See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * UCAID licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific
+ * language governing permissions and limitations under the License.
  */
 
 /** XMLRequestMapper.cpp
@@ -24,6 +28,7 @@
 #include "AccessControl.h"
 #include "RequestMapper.h"
 #include "SPRequest.h"
+#include "util/CGIParser.h"
 #include "util/DOMPropertySet.h"
 #include "util/SPConstants.h"
 
@@ -446,23 +451,24 @@ const Override* Override::locate(const HTTPRequest& request) const
     }
 
     // Finally, check for query string matches. This is another "unrolled" recursive descent in a loop.
-    // For now, only check if the method is GET, to avoid consuming POST data. Will need to revise the
-    // CGIParser API to fix this.
-    if (strcmp(request.getMethod(), "POST")) {
+    // To avoid consuming any POST data, we use a dedicated CGIParser.
+    if (!o->m_queries.empty()) {
         bool descended;
+        CGIParser cgi(request, true);
         do {
             descended = false;
             for (vector< pair< pair<string,RegularExpression*>,Override*> >::const_iterator q = o->m_queries.begin(); !descended && q != o->m_queries.end(); ++q) {
-                vector<const char*> vals;
-                if (request.getParameters(q->first.first.c_str(), vals)) {
+                pair<CGIParser::walker,CGIParser::walker> vals = cgi.getParameters(q->first.first.c_str());
+                if (vals.first != vals.second) {
                     if (q->first.second) {
                         // We have to match one of the values.
-                        for (vector<const char*>::const_iterator v = vals.begin(); v != vals.end(); ++v) {
-                            if (q->first.second->matches(*v)) {
+                        while (vals.first != vals.second) {
+                            if (q->first.second->matches(vals.first->second)) {
                                 o = q->second;
                                 descended = true;
                                 break;
                             }
+                            ++vals.first;
                         }
                     }
                     else {

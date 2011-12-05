@@ -1,17 +1,21 @@
-/*
- *  Copyright 2001-2010 Internet2
+/**
+ * Licensed to the University Corporation for Advanced Internet
+ * Development, Inc. (UCAID) under one or more contributor license
+ * agreements. See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * UCAID licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific
+ * language governing permissions and limitations under the License.
  */
 
 /**
@@ -96,8 +100,8 @@ namespace shibsp {
         }
 
         request.setContentType("text/html");
-        request.setResponseHeader("Expires","01-Jan-1997 12:00:00 GMT");
-        request.setResponseHeader("Cache-Control","private,no-store,no-cache");
+        request.setResponseHeader("Expires","Wed, 01 Jan 1997 12:00:00 GMT");
+        request.setResponseHeader("Cache-Control","private,no-store,no-cache,max-age=0");
 
         // Nothing in the request map, so check for a property named "page" in the Errors property set.
         if (!pathname.first && props) {
@@ -448,24 +452,29 @@ pair<bool,long> ServiceProvider::doExport(SPRequest& request, bool requireSessio
         app->setHeader(request, "Shib-Application-ID", app->getId());
         app->setHeader(request, "Shib-Session-ID", session->getID());
 
-        // Export the IdP name and Authn method/context info.
-        const char* hval = session->getEntityID();
-        if (hval)
-            app->setHeader(request, "Shib-Identity-Provider", hval);
-        hval = session->getAuthnInstant();
-        if (hval)
-            app->setHeader(request, "Shib-Authentication-Instant", hval);
-        hval = session->getAuthnContextClassRef();
-        if (hval) {
-            app->setHeader(request, "Shib-Authentication-Method", hval);
-            app->setHeader(request, "Shib-AuthnContext-Class", hval);
+        // Check for export of "standard" variables.
+        // A 3.0 release would switch this default to false and rely solely on the
+        // Assertion extractor plugin and ship out of the box with the same defaults.
+        pair<bool,bool> stdvars = settings.first->getBool("exportStdVars");
+        if (!stdvars.first || stdvars.second) {
+            const char* hval = session->getEntityID();
+            if (hval)
+                app->setHeader(request, "Shib-Identity-Provider", hval);
+            hval = session->getAuthnInstant();
+            if (hval)
+                app->setHeader(request, "Shib-Authentication-Instant", hval);
+            hval = session->getAuthnContextClassRef();
+            if (hval) {
+                app->setHeader(request, "Shib-Authentication-Method", hval);
+                app->setHeader(request, "Shib-AuthnContext-Class", hval);
+            }
+            hval = session->getAuthnContextDeclRef();
+            if (hval)
+                app->setHeader(request, "Shib-AuthnContext-Decl", hval);
+            hval = session->getSessionIndex();
+            if (hval)
+                app->setHeader(request, "Shib-Session-Index", hval);
         }
-        hval = session->getAuthnContextDeclRef();
-        if (hval)
-            app->setHeader(request, "Shib-AuthnContext-Decl", hval);
-        hval = session->getSessionIndex();
-        if (hval)
-            app->setHeader(request, "Shib-Session-Index", hval);
 
         // Maybe export the assertion keys.
         pair<bool,bool> exp=settings.first->getBool("exportAssertion");

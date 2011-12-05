@@ -1,17 +1,21 @@
-/*
- *  Copyright 2001-2010 Internet2
+/**
+ * Licensed to the University Corporation for Advanced Internet
+ * Development, Inc. (UCAID) under one or more contributor license
+ * agreements. See the NOTICE file distributed with this work for
+ * additional information regarding copyright ownership.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * UCAID licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific
+ * language governing permissions and limitations under the License.
  */
 
 /**
@@ -234,10 +238,19 @@ void SAML2Consumer::implementProtocol(
             // Save off the first valid SSO statement, but favor the "soonest" session expiration.
             const vector<AuthnStatement*>& statements = const_cast<const saml2::Assertion*>(*a)->getAuthnStatements();
             for (vector<AuthnStatement*>::const_iterator s = statements.begin(); s!=statements.end(); ++s) {
-                if (authnskew.first && authnskew.second && (*s)->getAuthnInstant() && (now - (*s)->getAuthnInstantEpoch() > authnskew.second))
-                    contextualError = "The gap between now and the time you logged into your identity provider exceeds the limit.";
-                else if (!ssoStatement || (*s)->getSessionNotOnOrAfterEpoch() < ssoStatement->getSessionNotOnOrAfterEpoch())
+                if ((*s)->getAuthnInstant() && (*s)->getAuthnInstantEpoch() - XMLToolingConfig::getConfig().clock_skew_secs > now) {
+                    contextualError = "The login time at your identity provider was future-dated.";
+                }
+                else if (authnskew.first && authnskew.second && (*s)->getAuthnInstant() &&
+                        (*s)->getAuthnInstantEpoch() <= now && (now - (*s)->getAuthnInstantEpoch() > authnskew.second)) {
+                    contextualError = "The gap between now and the time you logged into your identity provider exceeds the allowed limit.";
+                }
+                else if (authnskew.first && authnskew.second && (*s)->getAuthnInstant() == nullptr) {
+                    contextualError = "Your identity provider did not supply a time of login, violating local policy.";
+                }
+                else if (!ssoStatement || (*s)->getSessionNotOnOrAfterEpoch() < ssoStatement->getSessionNotOnOrAfterEpoch()) {
                     ssoStatement = *s;
+                }
             }
 
             // Save off the first valid Subject, but favor an unencrypted NameID over anything else.
@@ -406,7 +419,9 @@ void SAML2Consumer::implementProtocol(
                 policy.getIssuerMetadata(),
                 samlconstants::SAML20P_NS,
                 nullptr,
+                nullptr,
                 ssoName,
+                ssoStatement,
                 (authnContext && authnContext->getAuthnContextClassRef()) ? authnContext->getAuthnContextClassRef()->getReference() : nullptr,
                 (authnContext && authnContext->getAuthnContextDeclRef()) ? authnContext->getAuthnContextDeclRef()->getReference() : nullptr,
                 &tokens

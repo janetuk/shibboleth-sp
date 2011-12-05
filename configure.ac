@@ -1,5 +1,5 @@
 AC_PREREQ([2.50])
-AC_INIT([shibboleth],[2.5],[https://bugs.internet2.edu/],[shibboleth])
+AC_INIT([shibboleth],[2.5],[https://issues.shibboleth.net/],[shibboleth])
 AC_CONFIG_SRCDIR(shibsp)
 AC_CONFIG_AUX_DIR(build-aux)
 AC_CONFIG_MACRO_DIR(m4)
@@ -32,7 +32,7 @@ else
 fi
 
 AC_CONFIG_HEADERS([config.h shibsp/config_pub.h])
-AC_CONFIG_FILES([shibboleth.spec pkginfo Portfile])
+AC_CONFIG_FILES([shibboleth.spec])
 
 AC_PROG_CC([gcc gcc3 cc])
 AC_PROG_CXX([g++ g++3 c++ CC])
@@ -72,8 +72,8 @@ AC_STRUCT_TM
 # Checks for library functions.
 AC_FUNC_STRFTIME
 AC_FUNC_STRERROR_R
-AC_CHECK_HEADERS([sys/utsname.h])
-AC_CHECK_FUNCS([strchr strdup strstr timegm gmtime_r strtok_r strcasecmp])
+AC_CHECK_HEADERS([sys/utsname.h grp.h pwd.h])
+AC_CHECK_FUNCS([strchr strdup strstr timegm gmtime_r strtok_r strcasecmp getpwnam getgrnam])
 
 # checks for pthreads
 ACX_PTHREAD([enable_threads="pthread"],[enable_threads="no"])
@@ -294,7 +294,7 @@ AC_LINK_IFELSE(
         [[#if _XMLTOOLING_VERSION >= 10500
 xmltooling::XMLToolingConfig::getConfig();
 #else
-#error Need XMLTooling version 1.4 or higher
+#error Need XMLTooling version 1.5 or higher
 #endif]])],
     ,[AC_MSG_ERROR([unable to link with XMLTooling, or version was too old])])
 
@@ -340,7 +340,7 @@ AC_LINK_IFELSE(
 [[#if _OPENSAML_VERSION >= 20500
 opensaml::SAMLConfig::getConfig();
 #else
-#error Need OpenSAML version 2.4 or higher
+#error Need OpenSAML version 2.5 or higher
 #endif]])],
     ,[AC_MSG_ERROR([unable to link with OpenSAML, or version was too old])
 	])
