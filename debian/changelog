@@ -1,3 +1,9 @@
+shibboleth-sp2 (2.5+dfsg~moonshot2-2) unstable; urgency=low
+
+  * Update to libshibsp6
+
+ -- Sam Hartman <hartmans@project-moonshot.org>  Wed, 07 Dec 2011 11:52:12 -0500
+
 shibboleth-sp2 (2.5+dfsg~moonshot2-1) unstable; urgency=low
 
   * Update to new prerelease
