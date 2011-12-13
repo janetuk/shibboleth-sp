@@ -1,3 +1,9 @@
+shibboleth-sp2 (2.5+dfsg~moonshot3-1) unstable; urgency=low
+
+  * New upstream
+
+ -- Sam Hartman <hartmans@debian.org>  Tue, 13 Dec 2011 15:23:17 -0500
+
 shibboleth-sp2 (2.5+dfsg~moonshot2-2) unstable; urgency=low
 
   * Update to libshibsp6
