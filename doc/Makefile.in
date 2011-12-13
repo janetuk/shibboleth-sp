@@ -72,8 +72,8 @@ am__nobase_list = $(am__nobase_strip_setup); \
 am__base_list = \
   sed '$$!N;$$!N;$$!N;$$!N;$$!N;$$!N;$$!N;s/\n/ /g' | \
   sed '$$!N;$$!N;$$!N;$$!N;s/\n/ /g'
-am__installdirs = "$(DESTDIR)$(pkgdocdir)"
-DATA = $(pkgdoc_DATA)
+am__installdirs = "$(DESTDIR)$(pkgdocdir)" "$(DESTDIR)$(pkgwebdir)"
+DATA = $(pkgdoc_DATA) $(pkgweb_DATA)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
@@ -255,6 +255,7 @@ top_srcdir = @top_srcdir@
 xs = @xs@
 AUTOMAKE_OPTIONS = foreign
 pkgdocdir = $(datadir)/doc/@PACKAGE@-@PACKAGE_VERSION@
+pkgwebdir = $(datadir)/@PACKAGE@
 docfiles = \
 	CREDITS.txt \
 	LICENSE.txt \
@@ -263,12 +264,12 @@ docfiles = \
 	RELEASE.txt \
 	FASTCGI.LICENSE \
 	OPENSSL.LICENSE \
-	LOG4CPP.LICENSE \
-	main.css \
-	logo.jpg
+	LOG4CPP.LICENSE
 
+webfiles = main.css logo.jpg
 pkgdoc_DATA = $(docfiles)
-EXTRA_DIST = $(docfiles) api
+pkgweb_DATA = $(webfiles)
+EXTRA_DIST = $(docfiles) $(webfiles) api
 all: all-am
 
 .SUFFIXES:
@@ -328,6 +329,26 @@ uninstall-pkgdocDATA:
 	test -n "$$files" || exit 0; \
 	echo " ( cd '$(DESTDIR)$(pkgdocdir)' && rm -f" $$files ")"; \
 	cd "$(DESTDIR)$(pkgdocdir)" && rm -f $$files
+install-pkgwebDATA: $(pkgweb_DATA)
+	@$(NORMAL_INSTALL)
+	test -z "$(pkgwebdir)" || $(MKDIR_P) "$(DESTDIR)$(pkgwebdir)"
+	@list='$(pkgweb_DATA)'; test -n "$(pkgwebdir)" || list=; \
+	for p in $$list; do \
+	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
+	  echo "$$d$$p"; \
+	done | $(am__base_list) | \
+	while read files; do \
+	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(pkgwebdir)'"; \
+	  $(INSTALL_DATA) $$files "$(DESTDIR)$(pkgwebdir)" || exit $$?; \
+	done
+
+uninstall-pkgwebDATA:
+	@$(NORMAL_UNINSTALL)
+	@list='$(pkgweb_DATA)'; test -n "$(pkgwebdir)" || list=; \
+	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
+	test -n "$$files" || exit 0; \
+	echo " ( cd '$(DESTDIR)$(pkgwebdir)' && rm -f" $$files ")"; \
+	cd "$(DESTDIR)$(pkgwebdir)" && rm -f $$files
 tags: TAGS
 TAGS:
 
@@ -369,7 +390,7 @@ check-am: all-am
 check: check-am
 all-am: Makefile $(DATA)
 installdirs:
-	for dir in "$(DESTDIR)$(pkgdocdir)"; do \
+	for dir in "$(DESTDIR)$(pkgdocdir)" "$(DESTDIR)$(pkgwebdir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-am
@@ -417,7 +438,7 @@ info: info-am
 
 info-am:
 
-install-data-am: install-pkgdocDATA
+install-data-am: install-pkgdocDATA install-pkgwebDATA
 	@$(NORMAL_INSTALL)
 	$(MAKE) $(AM_MAKEFLAGS) install-data-hook
 install-dvi: install-dvi-am
@@ -462,7 +483,7 @@ ps: ps-am
 
 ps-am:
 
-uninstall-am: uninstall-pkgdocDATA
+uninstall-am: uninstall-pkgdocDATA uninstall-pkgwebDATA
 
 .MAKE: install-am install-data-am install-strip
 
@@ -472,11 +493,12 @@ uninstall-am: uninstall-pkgdocDATA
 	install-data install-data-am install-data-hook install-dvi \
 	install-dvi-am install-exec install-exec-am install-html \
 	install-html-am install-info install-info-am install-man \
-	install-pdf install-pdf-am install-pkgdocDATA install-ps \
-	install-ps-am install-strip installcheck installcheck-am \
-	installdirs maintainer-clean maintainer-clean-generic \
-	mostlyclean mostlyclean-generic mostlyclean-libtool pdf pdf-am \
-	ps ps-am uninstall uninstall-am uninstall-pkgdocDATA
+	install-pdf install-pdf-am install-pkgdocDATA \
+	install-pkgwebDATA install-ps install-ps-am install-strip \
+	installcheck installcheck-am installdirs maintainer-clean \
+	maintainer-clean-generic mostlyclean mostlyclean-generic \
+	mostlyclean-libtool pdf pdf-am ps ps-am uninstall uninstall-am \
+	uninstall-pkgdocDATA uninstall-pkgwebDATA
 
 
 install-data-hook:

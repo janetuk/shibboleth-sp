@@ -64,9 +64,8 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 DIST_COMMON = $(am__configure_deps) $(srcdir)/Makefile.am \
-	$(srcdir)/Makefile.in $(srcdir)/Portfile.in \
-	$(srcdir)/config.h.in $(srcdir)/doxygen.am \
-	$(srcdir)/pkginfo.in $(srcdir)/shibboleth.spec.in \
+	$(srcdir)/Makefile.in $(srcdir)/config.h.in \
+	$(srcdir)/doxygen.am $(srcdir)/shibboleth.spec.in \
 	$(top_srcdir)/configure build-aux/config.guess \
 	build-aux/config.sub build-aux/depcomp build-aux/install-sh \
 	build-aux/ltmain.sh build-aux/missing
@@ -83,7 +82,7 @@ am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
  configure.lineno config.status.lineno
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = config.h $(top_builddir)/shibsp/config_pub.h
-CONFIG_CLEAN_FILES = shibboleth.spec pkginfo Portfile
+CONFIG_CLEAN_FILES = shibboleth.spec
 CONFIG_CLEAN_VPATH_FILES =
 SOURCES =
 DIST_SOURCES =
@@ -359,14 +358,13 @@ DIST_SUBDIRS = \
 	memcache-store \
 	selinux
 
-GENFILES = @PACKAGE_NAME@.spec pkginfo Portfile
+GENFILES = @PACKAGE_NAME@.spec
 EXTRA_DIST = $(DX_CONFIG) \
     isapi_shib \
     Shibboleth.sln \
     config_win32.h \
     $(GENFILES) \
-    $(GENFILES:%=%.in) \
-    postinstall
+    $(GENFILES:%=%.in)
 
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
@@ -424,10 +422,6 @@ $(srcdir)/config.h.in:  $(am__configure_deps)
 distclean-hdr:
 	-rm -f config.h stamp-h1
 shibboleth.spec: $(top_builddir)/config.status $(srcdir)/shibboleth.spec.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-pkginfo: $(top_builddir)/config.status $(srcdir)/pkginfo.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-Portfile: $(top_builddir)/config.status $(srcdir)/Portfile.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 
 mostlyclean-libtool:

@@ -191,7 +191,8 @@ am_libshibsp_la_OBJECTS = $(am__objects_2) Base64AttributeDecoder.lo \
 	AttributeScopeMatchesShibMDScopeFunctor.lo \
 	ChainingAttributeResolver.lo QueryAttributeResolver.lo \
 	SimpleAggregationAttributeResolver.lo \
-	ChainingAttributeExtractor.lo DelegationAttributeExtractor.lo \
+	AssertionAttributeExtractor.lo ChainingAttributeExtractor.lo \
+	DelegationAttributeExtractor.lo \
 	KeyDescriptorAttributeExtractor.lo XMLAttributeExtractor.lo \
 	ArtifactResolver.lo SOAPClient.lo XMLSecurityPolicyProvider.lo \
 	DynamicMetadataProvider.lo MetadataExtImpl.lo \
@@ -597,6 +598,7 @@ libshibsp_la_SOURCES = \
 	attribute/resolver/impl/ChainingAttributeResolver.cpp \
 	attribute/resolver/impl/QueryAttributeResolver.cpp \
 	attribute/resolver/impl/SimpleAggregationAttributeResolver.cpp \
+    attribute/resolver/impl/AssertionAttributeExtractor.cpp \
 	attribute/resolver/impl/ChainingAttributeExtractor.cpp \
 	attribute/resolver/impl/DelegationAttributeExtractor.cpp \
 	attribute/resolver/impl/KeyDescriptorAttributeExtractor.cpp \
@@ -736,6 +738,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AnyMatchFunctor.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Application.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ArtifactResolver.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AssertionAttributeExtractor.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AssertionConsumerService.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AssertionLookup.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Attribute.Plo@am__quote@
@@ -1897,6 +1900,13 @@ SimpleAggregationAttributeResolver.lo: attribute/resolver/impl/SimpleAggregation
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='attribute/resolver/impl/SimpleAggregationAttributeResolver.cpp' object='SimpleAggregationAttributeResolver.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o SimpleAggregationAttributeResolver.lo `test -f 'attribute/resolver/impl/SimpleAggregationAttributeResolver.cpp' || echo '$(srcdir)/'`attribute/resolver/impl/SimpleAggregationAttributeResolver.cpp
+
+AssertionAttributeExtractor.lo: attribute/resolver/impl/AssertionAttributeExtractor.cpp
+@am__fastdepCXX_TRUE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT AssertionAttributeExtractor.lo -MD -MP -MF $(DEPDIR)/AssertionAttributeExtractor.Tpo -c -o AssertionAttributeExtractor.lo `test -f 'attribute/resolver/impl/AssertionAttributeExtractor.cpp' || echo '$(srcdir)/'`attribute/resolver/impl/AssertionAttributeExtractor.cpp
+@am__fastdepCXX_TRUE@	$(am__mv) $(DEPDIR)/AssertionAttributeExtractor.Tpo $(DEPDIR)/AssertionAttributeExtractor.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='attribute/resolver/impl/AssertionAttributeExtractor.cpp' object='AssertionAttributeExtractor.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o AssertionAttributeExtractor.lo `test -f 'attribute/resolver/impl/AssertionAttributeExtractor.cpp' || echo '$(srcdir)/'`attribute/resolver/impl/AssertionAttributeExtractor.cpp
 
 ChainingAttributeExtractor.lo: attribute/resolver/impl/ChainingAttributeExtractor.cpp
 @am__fastdepCXX_TRUE@	$(LIBTOOL)  --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT ChainingAttributeExtractor.lo -MD -MP -MF $(DEPDIR)/ChainingAttributeExtractor.Tpo -c -o ChainingAttributeExtractor.lo `test -f 'attribute/resolver/impl/ChainingAttributeExtractor.cpp' || echo '$(srcdir)/'`attribute/resolver/impl/ChainingAttributeExtractor.cpp
