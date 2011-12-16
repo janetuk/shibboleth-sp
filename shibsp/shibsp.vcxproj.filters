@@ -105,6 +105,9 @@
     <ClCompile Include="util\DOMPropertySet.cpp">
       <Filter>Source Files\util</Filter>
     </ClCompile>
+    <ClCompile Include="util\IPRange.cpp">
+      <Filter>Source Files\util</Filter>
+    </ClCompile>
     <ClCompile Include="util\SPConstants.cpp">
       <Filter>Source Files\util</Filter>
     </ClCompile>
@@ -145,6 +148,9 @@
       <Filter>Source Files\impl</Filter>
     </ClCompile>
     <ClCompile Include="impl\StorageServiceSessionCache.cpp">
+      <Filter>Source Files\impl</Filter>
+    </ClCompile>
+    <ClCompile Include="impl\TransactionLog.cpp">
       <Filter>Source Files\impl</Filter>
     </ClCompile>
     <ClCompile Include="impl\XMLAccessControl.cpp">
@@ -450,6 +456,9 @@
       <Filter>Header Files\util</Filter>
     </ClInclude>
     <ClInclude Include="util\DOMPropertySet.h">
+      <Filter>Header Files\util</Filter>
+    </ClInclude>
+    <ClInclude Include="util\IPRange.h">
       <Filter>Header Files\util</Filter>
     </ClInclude>
     <ClInclude Include="util\PropertySet.h">

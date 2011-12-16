@@ -38,7 +38,7 @@
 #include <xmltooling/util/Threads.h>
 
 #ifdef WIN32
-# include <winsock.h>
+# include <winsock2.h>
 #endif
 
 namespace shibsp {
@@ -78,7 +78,7 @@ namespace shibsp {
 
         bool m_catchAll;
     protected:
-        bool log_error() const; // for OS-level errors
+        bool log_error(const char* fn=nullptr) const; // for OS-level errors
         xmltooling::logging::Category* log;
         /// @endcond
 

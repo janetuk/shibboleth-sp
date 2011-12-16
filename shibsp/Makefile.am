@@ -98,6 +98,7 @@ secinclude_HEADERS = \
 utilinclude_HEADERS = \
 	util/CGIParser.h \
 	util/DOMPropertySet.h \
+	util/IPRange.h \
 	util/PropertySet.h \
 	util/SPConstants.h \
 	util/TemplateParameters.h
@@ -159,6 +160,7 @@ common_sources = \
 	remoting/impl/UnixListener.cpp \
 	util/CGIParser.cpp \
 	util/DOMPropertySet.cpp \
+	util/IPRange.cpp \
 	util/SPConstants.cpp \
 	util/TemplateParameters.cpp
 
@@ -212,6 +214,7 @@ libshibsp_la_SOURCES = \
 	attribute/resolver/impl/XMLAttributeExtractor.cpp \
 	binding/impl/ArtifactResolver.cpp \
 	binding/impl/SOAPClient.cpp \
+	impl/TransactionLog.cpp \
 	impl/XMLSecurityPolicyProvider.cpp \
 	metadata/DynamicMetadataProvider.cpp \
 	metadata/MetadataExtImpl.cpp \

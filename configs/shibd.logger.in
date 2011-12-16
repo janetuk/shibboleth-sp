@@ -4,6 +4,7 @@ log4j.rootCategory=INFO, shibd_log, warn_log
 # fairly verbose for DEBUG, so generally leave at INFO
 log4j.category.XMLTooling.XMLObject=INFO
 log4j.category.XMLTooling.KeyInfoResolver=INFO
+log4j.category.Shibboleth.IPRange=INFO
 log4j.category.Shibboleth.PropertySet=INFO
 
 # raise for low-level tracing of SOAP client HTTP/SSL behavior
@@ -32,6 +33,10 @@ log4j.additivity.XMLTooling.Signature.Debugger=false
 # Level should be left at INFO for this category
 log4j.category.Shibboleth-TRANSACTION=INFO, tran_log
 log4j.additivity.Shibboleth-TRANSACTION=false
+# uncomment to suppress particular event types
+#log4j.category.Shibboleth-TRANSACTION.AuthnRequest=WARN
+#log4j.category.Shibboleth-TRANSACTION.Login=WARN
+#log4j.category.Shibboleth-TRANSACTION.Logout=WARN
 
 # define the appenders
 
