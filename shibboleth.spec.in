@@ -23,10 +23,6 @@ BuildRequires: krb5-moonshot-devel
 
 %{?_with_log4cpp:BuildRequires: liblog4cpp-devel >= 1.0}
 %{!?_with_log4cpp:BuildRequires: liblog4shib-devel}
-%if 0%{?rhel} >= 6 || 0%{?centos_version} >= 600
-Requires:		libcurl-openssl >= 7.21.7
-BuildRequires:	chrpath
-%endif
 BuildRequires:  gcc-c++, zlib-devel, boost-devel >= 1.32.0
 %{!?_without_doxygen:BuildRequires: doxygen}
 %{!?_without_odbc:BuildRequires:unixODBC-devel}
@@ -143,17 +139,6 @@ if [ "$SYSCONFIG_SHIBD" != "no" ] ; then
 # User account for shibd
 SHIBD_USER=%{runuser}
 EOF
-	%if 0%{?rhel} >= 6 || 0%{?centos_version} >= 600
-		cat >> $SYSCONFIG_SHIBD <<EOF
-
-# Override OS-supplied libcurl
-export LD_LIBRARY_PATH=/opt/shibboleth/%{_lib}
-EOF
-		# Strip existing rpath to libcurl.
-		chrpath -d $RPM_BUILD_ROOT%{_sbindir}/shibd
-		chrpath -d $RPM_BUILD_ROOT%{_bindir}/mdquery
-		chrpath -d $RPM_BUILD_ROOT%{_bindir}/resolvertest
-	%endif
 fi
 
 %if "%{_vendor}" == "redhat" || "%{_vendor}" == "suse"
