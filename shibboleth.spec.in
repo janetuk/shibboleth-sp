@@ -6,7 +6,7 @@ Group:		Productivity/Networking/Security
 Vendor:		Internet2
 License:	Apache 2.0
 URL:		http://shibboleth.internet2.edu/
-Source:		%{name}-sp-%{version}.tar.gz
+Source:		%{name}-%{version}.tar.gz
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
 Requires:	openssl
 PreReq:		xmltooling-schemas, opensaml-schemas
