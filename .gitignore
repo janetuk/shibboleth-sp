@@ -62,8 +62,10 @@
 /apache/*.user
 /apache/mod_shib_20-Debug
 /apache/mod_shib_22-Debug
+/apache/mod_shib_24-Debug
 /apache/mod_shib_22-Release
 /apache/mod_shib_20-Release
+/apache/mod_shib_24-Release
 /apache/x64
 
 # /configs/
@@ -71,6 +73,8 @@
 /configs/Makefile.in
 /configs/apache.config
 /configs/apache2.config
+/configs/apache22.config
+/configs/apache24.config
 /configs/shar.logger
 /configs/shire.logger
 /configs/shibboleth.ini
