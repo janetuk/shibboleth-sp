@@ -45,14 +45,13 @@
 /adfs/.deps
 /adfs/Makefile.in
 /adfs/Makefile
+/adfs/.libs
 
 # /apache/
 /apache/Makefile.in
 /apache/Makefile
 /apache/.libs
 /apache/.deps
-/apache/*.lo
-/apache/*.la
 /apache/Debug
 /apache/*.plg
 /apache/Release
@@ -75,14 +74,13 @@
 /configs/apache2.config
 /configs/apache22.config
 /configs/apache24.config
-/configs/shar.logger
-/configs/shire.logger
-/configs/shibboleth.ini
-/configs/shibboleth.xml
-/configs/creds.xml
-/configs/AAP.xml
-/configs/IQ-sites.xml
-/configs/IQ-trust.xml
+/configs/native.logger
+/configs/shibd.logger
+/configs/shibboleth2.xml
+/configs/shibd-redhat
+/configs/shibd-debian
+/configs/shibd-suse
+/configs/shibd-osx.plist
 
 # /doc/
 /doc/Makefile
@@ -90,6 +88,8 @@
 
 # /fastcgi/
 /fastcgi/*.user
+/fastcgi/shibauthorizer
+/fastcgi/shibresponder
 /fastcgi/shibauthorizer-Release
 /fastcgi/shibresponder-Release
 /fastcgi/shibresponder-Debug
@@ -98,6 +98,7 @@
 /fastcgi/.deps
 /fastcgi/Makefile.in
 /fastcgi/Makefile
+/fastcgi/.libs
 
 # /isapi_shib/
 /isapi_shib/*.plg
@@ -123,6 +124,7 @@
 /memcache-store/Makefile.in
 /memcache-store/Makefile
 /memcache-store/x64
+/memcache-store/.libs
 
 # /msi/
 /msi/*.msi
@@ -149,6 +151,7 @@
 /odbc-store/.deps
 /odbc-store/Makefile.in
 /odbc-store/Makefile
+/odbc-store/.libs
 
 # /plugins/
 /plugins/Makefile
@@ -158,6 +161,7 @@
 /plugins/Release
 /plugins/x64
 /plugins/.deps
+/plugins/.libs
 
 # /schemas/
 /schemas/aclocal.m4
@@ -174,6 +178,7 @@
 /schemas/depcomp
 /schemas/configure
 /schemas/libtool
+/schemas/catalog.xml
 
 # /selinux/
 /selinux/Makefile.in
@@ -210,6 +215,9 @@
 /shibsp/Makefile
 /shibsp/paths.h
 /shibsp/x64
+/shibsp/.libs
+/shibsp/stamp*
+/shibsp/config_pub.h
 
 # /util/
 /util/Debug
@@ -219,3 +227,6 @@
 /util/.deps
 /util/Makefile.in
 /util/Makefile
+/util/.libs
+/util/resolvertest
+/util/mdquery
