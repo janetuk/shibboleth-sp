@@ -168,8 +168,8 @@
 /plugins/Makefile
 /plugins/Makefile.in
 /plugins/*.user
-/plugins/Debug
-/plugins/Release
+/plugins/*Debug
+/plugins/*Release
 /plugins/x64
 /plugins/.deps
 /plugins/.libs
