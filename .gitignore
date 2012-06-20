@@ -145,6 +145,7 @@
 /nsapi_shib/*.plg
 /nsapi_shib/Release
 /nsapi_shib/Debug
+/nsapi_shib/x64
 /nsapi_shib/*.dep
 /nsapi_shib/*.mak
 /nsapi_shib/*.aps
