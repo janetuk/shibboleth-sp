@@ -234,6 +234,7 @@
 # /util/
 /util/Debug
 /util/*.user
+/util/*.aps
 /util/Release
 /util/x64
 /util/.deps
