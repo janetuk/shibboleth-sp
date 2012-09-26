@@ -40,6 +40,7 @@ using namespace shibsp;
 using namespace opensaml;
 using namespace xmlsignature;
 using namespace xmltooling;
+using namespace boost;
 using namespace std;
 
 namespace shibsp {
@@ -47,32 +48,37 @@ namespace shibsp {
     {
     public:
         KeyInfoAttributeDecoder(const DOMElement* e);
-        ~KeyInfoAttributeDecoder() {
-            delete m_keyInfoResolver;
+        ~KeyInfoAttributeDecoder() {}
+
+        // deprecated method
+        Attribute* decode(
+            const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=nullptr, const char* relyingParty=nullptr
+            ) const {
+            return decode(nullptr, ids, xmlObject, assertingParty, relyingParty);
         }
 
         Attribute* decode(
-            const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=nullptr, const char* relyingParty=nullptr
+            const GenericRequest*, const vector<string>&, const XMLObject*, const char* assertingParty=nullptr, const char* relyingParty=nullptr
             ) const;
 
     private:
         void extract(const KeyInfo* k, vector<string>& dest) const {
-            auto_ptr<Credential> cred (getKeyInfoResolver()->resolve(k, Credential::RESOLVE_KEYS));
-            if (cred.get()) {
+            scoped_ptr<Credential> cred(getKeyInfoResolver()->resolve(k, Credential::RESOLVE_KEYS));
+            if (cred) {
                 dest.push_back(string());
-                dest.back() = SecurityHelper::getDEREncoding(*cred.get(), m_hash ? m_keyInfoHashAlg.c_str() : nullptr);
+                dest.back() = SecurityHelper::getDEREncoding(*cred, m_hash ? m_keyInfoHashAlg.c_str() : nullptr);
                 if (dest.back().empty())
                     dest.pop_back();
             }
         }
 
         const KeyInfoResolver* getKeyInfoResolver() const {
-            return m_keyInfoResolver ? m_keyInfoResolver : XMLToolingConfig::getConfig().getKeyInfoResolver();
+            return m_keyInfoResolver ? m_keyInfoResolver.get() : XMLToolingConfig::getConfig().getKeyInfoResolver();
         }
 
         bool m_hash;
         string m_keyInfoHashAlg;
-        KeyInfoResolver* m_keyInfoResolver;
+        scoped_ptr<KeyInfoResolver> m_keyInfoResolver;
     };
 
     AttributeDecoder* SHIBSP_DLLLOCAL KeyInfoAttributeDecoderFactory(const DOMElement* const & e)
@@ -89,19 +95,18 @@ namespace shibsp {
 KeyInfoAttributeDecoder::KeyInfoAttributeDecoder(const DOMElement* e)
     : AttributeDecoder(e),
         m_hash(XMLHelper::getAttrBool(e, false, _hash)),
-        m_keyInfoHashAlg(XMLHelper::getAttrString(e, "SHA1", keyInfoHashAlg)),
-        m_keyInfoResolver(nullptr) {
-    e = XMLHelper::getFirstChildElement(e,_KeyInfoResolver);
+        m_keyInfoHashAlg(XMLHelper::getAttrString(e, "SHA1", keyInfoHashAlg)) {
+    e = XMLHelper::getFirstChildElement(e, _KeyInfoResolver);
     if (e) {
         string t(XMLHelper::getAttrString(e, nullptr, _type));
         if (t.empty())
             throw UnknownExtensionException("<KeyInfoResolver> element found with no type attribute");
-        m_keyInfoResolver = XMLToolingConfig::getConfig().KeyInfoResolverManager.newPlugin(t.c_str(), e);
+        m_keyInfoResolver.reset(XMLToolingConfig::getConfig().KeyInfoResolverManager.newPlugin(t.c_str(), e));
     }
 }
 
 Attribute* KeyInfoAttributeDecoder::decode(
-    const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty, const char* relyingParty
+    const GenericRequest*, const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty, const char* relyingParty
     ) const
 {
     Category& log = Category::getInstance(SHIBSP_LOGCAT".AttributeDecoder.KeyInfo");
@@ -148,13 +153,13 @@ Attribute* KeyInfoAttributeDecoder::decode(
         }
     }
 
-    for (; v!=stop; ++v) {
+    for (; v != stop; ++v) {
         const KeyInfo* k = dynamic_cast<const KeyInfo*>(*v);
         if (k)
             extract(k, dest);
         else if ((*v)->hasChildren()) {
             const list<XMLObject*>& children = (*v)->getOrderedChildren();
-            for (list<XMLObject*>::const_iterator vv = children.begin(); vv!=children.end(); ++vv) {
+            for (list<XMLObject*>::const_iterator vv = children.begin(); vv != children.end(); ++vv) {
                 if (k=dynamic_cast<const KeyInfo*>(*vv))
                     extract(k, dest);
                 else

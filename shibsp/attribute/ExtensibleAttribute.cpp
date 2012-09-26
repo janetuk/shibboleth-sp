@@ -29,6 +29,8 @@
 #include "attribute/ExtensibleAttribute.h"
 #include "util/SPConstants.h"
 
+#include <boost/algorithm/string/trim.hpp>
+
 using namespace shibsp;
 using namespace xmltooling;
 using namespace std;
@@ -97,26 +99,26 @@ const vector<string>& ExtensibleAttribute::getSerializedValues() const
             DDF val = m_obj.first().first();
             while (!val.isnull()) {
 
-                static const char* legal="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890_.[]";
+                static const char* legal="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890_-.[]";
 
                 m_serialized.push_back(string());
                 string& processed = m_serialized.back();
 
                 string::size_type i=0,start=0;
-                while (start!=string::npos && start<msg.length() && (i=msg.find("$",start))!=string::npos) {
+                while (start != string::npos && start < msg.length() && (i = msg.find("$",start)) != string::npos) {
                     if (i>start)
-                        processed += msg.substr(start,i-start); // append everything in between
-                    start=i+1;                                  // move start to the beginning of the token name
-                    i=msg.find_first_not_of(legal,start);       // find token delimiter
-                    if (i==start) {                             // append a non legal character
-                       processed+=msg[start++];
+                        processed += msg.substr(start, i-start);    // append everything in between
+                    start = i+1;                                    // move start to the beginning of the token name
+                    i = msg.find_first_not_of(legal, start);        // find token delimiter
+                    if (i == start) {                               // append a non legal character
+                       processed += msg[start++];
                        continue;
                     }
                     
-                    string tag = msg.substr(start,(i==string::npos) ? i : i-start);
+                    string tag = msg.substr(start, (i==string::npos) ? i : i-start);
                     if (tag == "_string" && val.string()) {
                         processed += val.string();
-                        start=i;
+                        start = i;
                     }
                     else {
                         DDF child = val.getmember(tag.c_str());
@@ -124,11 +126,12 @@ const vector<string>& ExtensibleAttribute::getSerializedValues() const
                             processed += child.string();
                         else if (child.isstruct() && child["_string"].string())
                             processed += child["_string"].string();
-                        start=i;
+                        start = i;
                     }
                 }
-                if (start!=string::npos && start<msg.length())
+                if (start != string::npos && start < msg.length())
                     processed += msg.substr(start,i);    // append rest of string
+                boost::trim(processed);
 
                 val = m_obj.first().next();
             }
@@ -139,9 +142,14 @@ const vector<string>& ExtensibleAttribute::getSerializedValues() const
 
 DDF ExtensibleAttribute::marshall() const
 {
-    if (!isCaseSensitive())
-        m_obj.addmember("case_insensitive");
-    if (isInternal())
-        m_obj.addmember("internal");
-    return m_obj.copy();
+    DDF ddf = Attribute::marshall();
+    ddf.name("Extensible");
+    ddf.addmember("_formatter").string(m_obj["_formatter"].string());
+    DDF val = m_obj.first().first();
+    while (!val.isnull()) {
+        DDF dup = val.copy();
+        ddf.first().add(dup);
+        val = m_obj.first().next();
+    }
+    return ddf;
 }

@@ -30,6 +30,8 @@
 #include <shibsp/handler/AbstractHandler.h>
 #include <shibsp/handler/RemotedHandler.h>
 
+#include <boost/scoped_ptr.hpp>
+
 #ifndef SHIBSP_LITE
 namespace opensaml {
     class SAML_API Assertion;
@@ -96,7 +98,23 @@ namespace shibsp {
          * @param issuedTo      address for which security assertion was issued
          */
         void checkAddress(const Application& application, const xmltooling::HTTPRequest& httpRequest, const char* issuedTo) const;
-        
+
+
+        /**
+         * Complete the client's transition back to the expected resource.
+         * 
+         * @param application   reference to application receiving message
+         * @param httpRequest   client request that included message
+         * @param httpResponse  response to client
+         * @param relayState    relay state token
+         */
+        virtual std::pair<bool,long> finalizeResponse(
+            const Application& application,
+            const xmltooling::HTTPRequest& httpRequest,
+            xmltooling::HTTPResponse& httpResponse,
+            std::string& relayState
+            ) const;
+
 #ifndef SHIBSP_LITE
         void generateMetadata(opensaml::saml2md::SPSSODescriptor& role, const char* handlerURL) const;
         
@@ -188,8 +206,10 @@ namespace shibsp {
          * <p>The caller must free the returned context handle.
          * 
          * @param application           reference to application receiving message
+         * @param request               request delivering message, if any
          * @param issuer                source of SSO tokens
          * @param protocol              SSO protocol used
+         * @param protmsg               SSO protocol message, if any
          * @param v1nameid              identifier of principal in SAML 1.x form, if any
          * @param v1statement           SAML 1.x authentication statement, if any
          * @param nameid                identifier of principal in SAML 2.0 form
@@ -200,8 +220,10 @@ namespace shibsp {
          */
         ResolutionContext* resolveAttributes(
             const Application& application,
+            const xmltooling::GenericRequest* request=nullptr,
             const opensaml::saml2md::RoleDescriptor* issuer=nullptr,
             const XMLCh* protocol=nullptr,
+            const xmltooling::XMLObject* protmsg=nullptr,
             const opensaml::saml1::NameIdentifier* v1nameid=nullptr,
             const opensaml::saml1::AuthenticationStatement* v1statement=nullptr,
             const opensaml::saml2::NameID* nameid=nullptr,
@@ -242,8 +264,7 @@ namespace shibsp {
             ) const;
                 
 #ifndef SHIBSP_LITE
-        opensaml::MessageDecoder* m_decoder;
-        xmltooling::QName m_role;
+        boost::scoped_ptr<opensaml::MessageDecoder> m_decoder;
 #endif
     };
 

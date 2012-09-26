@@ -32,10 +32,12 @@
 #include "remoting/ListenerService.h"
 
 #include <algorithm>
+#include <boost/bind.hpp>
 #include <xmltooling/util/Threads.h>
 
 using namespace shibsp;
 using namespace xmltooling;
+using namespace boost;
 using namespace std;
 
 Application::Application(const ServiceProvider* sp) : m_sp(sp), m_lock(RWLock::create())
@@ -61,27 +63,32 @@ const char* Application::getId() const
 pair<string,const char*> Application::getCookieNameProps(const char* prefix, time_t* lifetime) const
 {
     static const char* defProps="; path=/; HttpOnly";
+    static const char* sslProps="; path=/; secure; HttpOnly";
 
     if (lifetime)
         *lifetime = 0;
-    const PropertySet* props=getPropertySet("Sessions");
+    if (!prefix)
+        prefix = "";
+    const PropertySet* props = getPropertySet("Sessions");
     if (props) {
         if (lifetime) {
             pair<bool,unsigned int> lt = props->getUnsignedInt("cookieLifetime");
             if (lt.first)
                 *lifetime = lt.second;
         }
-        pair<bool,const char*> p=props->getString("cookieProps");
-        if (!p.first)
-            p.second=defProps;
-        pair<bool,const char*> p2=props->getString("cookieName");
+        pair<bool,const char*> p = props->getString("cookieProps");
+        if (!p.first || !strcmp(p.second, "http"))
+            p.second = defProps;
+        else if (!strcmp(p.second, "https"))
+            p.second = sslProps;
+        pair<bool,const char*> p2 = props->getString("cookieName");
         if (p2.first)
-            return make_pair(string(prefix) + p2.second,p.second);
-        return make_pair(string(prefix) + getHash(),p.second);
+            return make_pair(string(prefix) + p2.second, p.second);
+        return make_pair(string(prefix) + getHash(), p.second);
     }
 
     // Shouldn't happen, but just in case..
-    return pair<string,const char*>(prefix,defProps);
+    return pair<string,const char*>(prefix, defProps);
 }
 
 void Application::clearHeader(SPRequest& request, const char* rawname, const char* cginame) const
@@ -102,8 +109,15 @@ string Application::getSecureHeader(const SPRequest& request, const char* name) 
 void Application::clearAttributeHeaders(SPRequest& request) const
 {
     if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
-        for (vector< pair<string,string> >::const_iterator i = m_unsetHeaders.begin(); i!=m_unsetHeaders.end(); ++i)
-            request.clearHeader(i->first.c_str(), i->second.c_str());
+        for_each(
+            m_unsetHeaders.begin(), m_unsetHeaders.end(),
+            boost::bind(
+                &SPRequest::clearHeader,
+                boost::ref(request),
+                boost::bind(&string::c_str, boost::bind(&pair<string,string>::first, _1)),
+                boost::bind(&string::c_str, boost::bind(&pair<string,string>::first, _1))
+                )
+            );
         return;
     }
 
@@ -120,7 +134,7 @@ void Application::clearAttributeHeaders(SPRequest& request) const
             out = getServiceProvider().getListenerService()->send(in);
             if (out.islist()) {
                 DDF header = out.first();
-                while (header.isstring()) {
+                while (header.name() && header.isstring()) {
                     m_unsetHeaders.push_back(pair<string,string>(header.name(),header.string()));
                     header = out.next();
                 }
@@ -134,8 +148,15 @@ void Application::clearAttributeHeaders(SPRequest& request) const
 
     // Now holding read lock.
     SharedLock unsetLock(m_lock, false);
-    for (vector< pair<string,string> >::const_iterator i = m_unsetHeaders.begin(); i!=m_unsetHeaders.end(); ++i)
-        request.clearHeader(i->first.c_str(), i->second.c_str());
+    for_each(
+        m_unsetHeaders.begin(), m_unsetHeaders.end(),
+        boost::bind(
+            &SPRequest::clearHeader,
+            boost::ref(request),
+            boost::bind(&string::c_str, boost::bind(&pair<string,string>::first, _1)),
+            boost::bind(&string::c_str, boost::bind(&pair<string,string>::first, _1))
+            )
+        );
 }
 
 const Handler* Application::getAssertionConsumerServiceByProtocol(const XMLCh* protocol, const char* binding) const
@@ -143,4 +164,8 @@ const Handler* Application::getAssertionConsumerServiceByProtocol(const XMLCh* p
     auto_ptr_XMLCh b(binding);
     const vector<const Handler*>& handlers = getAssertionConsumerServicesByBinding(b.get());
     return handlers.empty() ? nullptr : handlers.front();
+}
+
+void Application::limitRedirect(const GenericRequest& request, const char* url) const
+{
 }

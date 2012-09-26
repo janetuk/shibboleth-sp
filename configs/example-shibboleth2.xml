@@ -64,10 +64,10 @@
     <!--
     To customize behavior for specific resources on Apache, and to link vhosts or
     resources to ApplicationOverride settings below, use web server options/commands.
-    See https://spaces.internet2.edu/display/SHIB2/NativeSPConfigurationElements for help.
+    See https://wiki.shibboleth.net/confluence/display/SHIB2/NativeSPConfigurationElements for help.
     
     For examples with the RequestMap XML syntax instead, see the example-shibboleth2.xml
-    file, and the https://spaces.internet2.edu/display/SHIB2/NativeSPRequestMapHowTo topic.
+    file, and the https://wiki.shibboleth.net/confluence/display/SHIB2/NativeSPRequestMapHowTo topic.
     -->
     <RequestMapper type="Native">
         <RequestMap>
@@ -93,6 +93,8 @@
     -->
     <ApplicationDefaults entityID="https://sp.example.org/shibboleth"
                          REMOTE_USER="eppn persistent-id targeted-id"
+                         metadataAttributePrefix="Meta-"
+                         sessionHook="/Shibboleth.sso/AttrChecker"
                          signing="false" encryption="false">
 
         <!--
@@ -100,12 +102,12 @@
         You MUST supply an effectively unique handlerURL value for each of your applications.
         The value defaults to /Shibboleth.sso, and should be a relative path, with the SP computing
         a relative value based on the virtual host. Using handlerSSL="true", the default, will force
-        the protocol to be https. You should also add a cookieProps setting of "; path=/; secure; HttpOnly"
-        in that case. Note that while we default checkAddress to "false", this has a negative
-        impact on the security of the SP. Stealing cookies/sessions is much easier with this disabled.
+        the protocol to be https. You should also set cookieProps to "https" for SSL-only sites.
+        Note that while we default checkAddress to "false", this has a negative impact on the
+        security of your site. Stealing sessions via cookie theft is much easier with this disabled.
         -->
         <Sessions lifetime="28800" timeout="3600" checkAddress="false"
-            handlerURL="/Shibboleth.sso" handlerSSL="false" relayState="ss:mem"
+            handlerURL="/Shibboleth.sso" handlerSSL="false" cookieProps="http" relayState="ss:mem"
             exportLocation="http://localhost/Shibboleth.sso/GetAssertion" exportACL="127.0.0.1"
             idpHistory="false" idpHistoryDays="7">
 
@@ -123,7 +125,7 @@
 
             <!-- Default directs to a specific IdP (favoring SAML 2 over Shib 1). -->
             <SessionInitiator type="Chaining" Location="/Login" isDefault="true" id="Login"
-                              entityID="https://idp.example.org/shibboleth">
+                              entityID="https://idp.example.org/idp/shibboleth">
               
                 <SessionInitiator type="SAML2" template="bindingTemplate.html"/>
                 <SessionInitiator type="Shib1"/>
@@ -192,13 +194,17 @@
             <Handler type="MetadataGenerator" Location="/Metadata" signing="false"/>
 
             <!-- Status reporting service. -->
-            <Handler type="Status" Location="/Status" acl="127.0.0.1"/>
+            <Handler type="Status" Location="/Status" acl="127.0.0.1 ::1"/>
 
             <!-- Session diagnostic service. -->
             <Handler type="Session" Location="/Session" showAttributeValues="false"/>
 
             <!-- JSON feed of discovery information. -->
             <Handler type="DiscoveryFeed" Location="/DiscoFeed"/>
+
+            <!-- Checks for required attribute(s) before login completes. -->
+            <Handler type="AttributeChecker" Location="/AttrChecker" template="attrChecker.html"
+                attributes="eppn" flushSession="true"/>
         </Sessions>
 
         <!--
@@ -206,7 +212,7 @@
         also add attributes with values that can be plugged into the templates.
         -->
         <Errors supportContact="root@localhost"
-            logoLocation="/shibboleth-sp/logo.jpg"
+            helpLocation="/about.html"
             styleSheet="/shibboleth-sp/main.css"/>
         
         <!--
@@ -236,8 +242,11 @@
         <TrustEngine type="PKIX"/>
 
         <!-- Map to extract attributes from SAML assertions. -->
-        <AttributeExtractor type="XML" validate="true" path="attribute-map.xml"/>
-        
+        <AttributeExtractor type="XML" validate="true" reloadChanges="false" path="attribute-map.xml"/>
+
+        <!-- Extracts support information for IdP from its metadata. -->
+        <AttributeExtractor type="Metadata" errorURL="errorURL" DisplayName="displayName"/>
+
         <!-- Use a SAML query if no attributes are supplied during SSO. -->
         <AttributeResolver type="Query" subjectMatch="true"/>
 
@@ -249,7 +258,7 @@
 
         <!--
         The default settings can be overridden by creating ApplicationOverride elements (see
-        the https://spaces.internet2.edu/display/SHIB2/NativeSPApplicationOverride topic).
+        the https://wiki.shibboleth.net/confluence/display/SHIB2/NativeSPApplicationOverride topic).
         Resource requests are mapped by web server commands, or the RequestMapper, to an
         applicationId setting.
         

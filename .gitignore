@@ -45,14 +45,13 @@
 /adfs/.deps
 /adfs/Makefile.in
 /adfs/Makefile
+/adfs/.libs
 
 # /apache/
 /apache/Makefile.in
 /apache/Makefile
 /apache/.libs
 /apache/.deps
-/apache/*.lo
-/apache/*.la
 /apache/Debug
 /apache/*.plg
 /apache/Release
@@ -62,8 +61,10 @@
 /apache/*.user
 /apache/mod_shib_20-Debug
 /apache/mod_shib_22-Debug
+/apache/mod_shib_24-Debug
 /apache/mod_shib_22-Release
 /apache/mod_shib_20-Release
+/apache/mod_shib_24-Release
 /apache/x64
 
 # /configs/
@@ -71,14 +72,15 @@
 /configs/Makefile.in
 /configs/apache.config
 /configs/apache2.config
-/configs/shar.logger
-/configs/shire.logger
-/configs/shibboleth.ini
-/configs/shibboleth.xml
-/configs/creds.xml
-/configs/AAP.xml
-/configs/IQ-sites.xml
-/configs/IQ-trust.xml
+/configs/apache22.config
+/configs/apache24.config
+/configs/native.logger
+/configs/shibd.logger
+/configs/shibboleth2.xml
+/configs/shibd-redhat
+/configs/shibd-debian
+/configs/shibd-suse
+/configs/shibd-osx.plist
 
 # /doc/
 /doc/Makefile
@@ -86,6 +88,8 @@
 
 # /fastcgi/
 /fastcgi/*.user
+/fastcgi/shibauthorizer
+/fastcgi/shibresponder
 /fastcgi/shibauthorizer-Release
 /fastcgi/shibresponder-Release
 /fastcgi/shibresponder-Debug
@@ -94,6 +98,7 @@
 /fastcgi/.deps
 /fastcgi/Makefile.in
 /fastcgi/Makefile
+/fastcgi/.libs
 
 # /isapi_shib/
 /isapi_shib/*.plg
@@ -119,15 +124,28 @@
 /memcache-store/Makefile.in
 /memcache-store/Makefile
 /memcache-store/x64
+/memcache-store/.libs
 
 # /msi/
 /msi/*.msi
 /msi/compile.log
 
+# /msi/WiX
+/msi/WiX/*.wixobj
+/msi/WiX/*.wixpdb
+/msi/WiX/*.msi
+
+# /msi/WiX/MergeModules
+/msi/WiX/MergeModules/*.wixobj
+/msi/WiX/MergeModules/*.wixpdb
+/msi/WiX/MergeModules/*.msm
+/msi/Wix/MergeModules/*.msi
+
 # /nsapi_shib/
 /nsapi_shib/*.plg
 /nsapi_shib/Release
 /nsapi_shib/Debug
+/nsapi_shib/x64
 /nsapi_shib/*.dep
 /nsapi_shib/*.mak
 /nsapi_shib/*.aps
@@ -145,15 +163,17 @@
 /odbc-store/.deps
 /odbc-store/Makefile.in
 /odbc-store/Makefile
+/odbc-store/.libs
 
 # /plugins/
 /plugins/Makefile
 /plugins/Makefile.in
 /plugins/*.user
-/plugins/Debug
-/plugins/Release
+/plugins/*Debug
+/plugins/*Release
 /plugins/x64
 /plugins/.deps
+/plugins/.libs
 
 # /schemas/
 /schemas/aclocal.m4
@@ -170,6 +190,7 @@
 /schemas/depcomp
 /schemas/configure
 /schemas/libtool
+/schemas/catalog.xml
 
 # /selinux/
 /selinux/Makefile.in
@@ -206,12 +227,19 @@
 /shibsp/Makefile
 /shibsp/paths.h
 /shibsp/x64
+/shibsp/.libs
+/shibsp/stamp*
+/shibsp/config_pub.h
 
 # /util/
 /util/Debug
 /util/*.user
+/util/*.aps
 /util/Release
 /util/x64
 /util/.deps
 /util/Makefile.in
 /util/Makefile
+/util/.libs
+/util/resolvertest
+/util/mdquery

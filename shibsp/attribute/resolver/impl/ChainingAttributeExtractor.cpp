@@ -30,12 +30,14 @@
 #include "attribute/Attribute.h"
 #include "attribute/resolver/AttributeExtractor.h"
 
+#include <boost/ptr_container/ptr_vector.hpp>
 #include <xercesc/util/XMLUniDefs.hpp>
 #include <xmltooling/util/XMLHelper.h>
 
 using namespace shibsp;
 using namespace opensaml::saml2md;
 using namespace xmltooling;
+using namespace boost;
 using namespace std;
 
 namespace shibsp {
@@ -44,9 +46,7 @@ namespace shibsp {
     {
     public:
         ChainingAttributeExtractor(const DOMElement* e);
-        virtual ~ChainingAttributeExtractor() {
-            for_each(m_extractors.begin(), m_extractors.end(), xmltooling::cleanup<AttributeExtractor>());
-        }
+        virtual ~ChainingAttributeExtractor() {}
 
         Lockable* lock() {
             return this;
@@ -59,30 +59,47 @@ namespace shibsp {
             const RoleDescriptor* issuer,
             const XMLObject& xmlObject,
             vector<Attribute*>& attributes
-            ) const;
+            ) const {
+            // Make sure new version gets run.
+            extractAttributes(application, nullptr, issuer, xmlObject, attributes);
+        }
+
+        void extractAttributes(
+            const Application& application,
+            const GenericRequest* request,
+            const RoleDescriptor* issuer,
+            const XMLObject& xmlObject,
+            vector<Attribute*>& attributes
+            ) const {
+            for (ptr_vector<AttributeExtractor>::iterator i = m_extractors.begin(); i != m_extractors.end(); ++i) {
+                Locker locker(&(*i));
+                i->extractAttributes(application, request, issuer, xmlObject, attributes);
+            }
+        }
 
         void getAttributeIds(vector<string>& attributes) const {
-            for (vector<AttributeExtractor*>::const_iterator i=m_extractors.begin(); i!=m_extractors.end(); ++i) {
-                Locker locker(*i);
-                (*i)->getAttributeIds(attributes);
+            for (ptr_vector<AttributeExtractor>::iterator i = m_extractors.begin(); i != m_extractors.end(); ++i) {
+                Locker locker(&(*i));
+                i->getAttributeIds(attributes);
             }
         }
 
         void generateMetadata(SPSSODescriptor& role) const {
-            for (vector<AttributeExtractor*>::const_iterator i=m_extractors.begin(); i!=m_extractors.end(); ++i) {
-                Locker locker(*i);
-                (*i)->generateMetadata(role);
+            for (ptr_vector<AttributeExtractor>::iterator i = m_extractors.begin(); i != m_extractors.end(); ++i) {
+                Locker locker(&(*i));
+                i->generateMetadata(role);
             }
         }
 
     private:
-        vector<AttributeExtractor*> m_extractors;
+        mutable ptr_vector<AttributeExtractor> m_extractors;
     };
 
     static const XMLCh _AttributeExtractor[] =  UNICODE_LITERAL_18(A,t,t,r,i,b,u,t,e,E,x,t,r,a,c,t,o,r);
     static const XMLCh _type[] =                UNICODE_LITERAL_4(t,y,p,e);
 
     SHIBSP_DLLLOCAL PluginManager<AttributeExtractor,string,const DOMElement*>::Factory AssertionAttributeExtractorFactory;
+    SHIBSP_DLLLOCAL PluginManager<AttributeExtractor,string,const DOMElement*>::Factory MetadataAttributeExtractorFactory;
     SHIBSP_DLLLOCAL PluginManager<AttributeExtractor,string,const DOMElement*>::Factory DelegationAttributeExtractorFactory;
     SHIBSP_DLLLOCAL PluginManager<AttributeExtractor,string,const DOMElement*>::Factory KeyDescriptorAttributeExtractorFactory;
     SHIBSP_DLLLOCAL PluginManager<AttributeExtractor,string,const DOMElement*>::Factory XMLAttributeExtractorFactory;
@@ -95,6 +112,7 @@ namespace shibsp {
 void SHIBSP_API shibsp::registerAttributeExtractors()
 {
     SPConfig::getConfig().AttributeExtractorManager.registerFactory(ASSERTION_ATTRIBUTE_EXTRACTOR, AssertionAttributeExtractorFactory);
+    SPConfig::getConfig().AttributeExtractorManager.registerFactory(METADATA_ATTRIBUTE_EXTRACTOR, MetadataAttributeExtractorFactory);
     SPConfig::getConfig().AttributeExtractorManager.registerFactory(DELEGATION_ATTRIBUTE_EXTRACTOR, DelegationAttributeExtractorFactory);
     SPConfig::getConfig().AttributeExtractorManager.registerFactory(KEYDESCRIPTOR_ATTRIBUTE_EXTRACTOR, KeyDescriptorAttributeExtractorFactory);
     SPConfig::getConfig().AttributeExtractorManager.registerFactory(XML_ATTRIBUTE_EXTRACTOR, XMLAttributeExtractorFactory);
@@ -113,6 +131,28 @@ void AttributeExtractor::generateMetadata(SPSSODescriptor& role) const
 {
 }
 
+void AttributeExtractor::extractAttributes(
+    const Application& application,
+    const GenericRequest* request,
+    const RoleDescriptor* issuer,
+    const XMLObject& xmlObject,
+    vector<Attribute*>& attributes
+    ) const
+{
+    // Default call into deprecated method.
+    extractAttributes(application, issuer, xmlObject, attributes);
+}
+
+void AttributeExtractor::extractAttributes(
+    const Application& application,
+    const RoleDescriptor* issuer,
+    const XMLObject& xmlObject,
+    vector<Attribute*>& attributes
+    ) const
+{
+    // Empty default for deprecated method.
+}
+
 ChainingAttributeExtractor::ChainingAttributeExtractor(const DOMElement* e)
 {
     SPConfig& conf = SPConfig::getConfig();
@@ -126,7 +166,9 @@ ChainingAttributeExtractor::ChainingAttributeExtractor(const DOMElement* e)
                 Category::getInstance(SHIBSP_LOGCAT".AttributeExtractor.Chaining").info(
                     "building AttributeExtractor of type (%s)...", t.c_str()
                     );
-                m_extractors.push_back(conf.AttributeExtractorManager.newPlugin(t.c_str(), e));
+                auto_ptr<AttributeExtractor> np(conf.AttributeExtractorManager.newPlugin(t.c_str(), e));
+                m_extractors.push_back(np.get());
+                np.release();
             }
             catch (exception& ex) {
                 Category::getInstance(SHIBSP_LOGCAT".AttributeExtractor.Chaining").error(
@@ -135,15 +177,5 @@ ChainingAttributeExtractor::ChainingAttributeExtractor(const DOMElement* e)
             }
         }
         e = XMLHelper::getNextSiblingElement(e, _AttributeExtractor);
-    }
-}
-
-void ChainingAttributeExtractor::extractAttributes(
-    const Application& application, const RoleDescriptor* issuer, const XMLObject& xmlObject, vector<Attribute*>& attributes
-    ) const
-{
-    for (vector<AttributeExtractor*>::const_iterator i=m_extractors.begin(); i!=m_extractors.end(); ++i) {
-        Locker locker(*i);
-        (*i)->extractAttributes(application, issuer, xmlObject, attributes);
     }
 }

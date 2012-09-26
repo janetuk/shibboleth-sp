@@ -2,7 +2,7 @@
 <schema targetNamespace="urn:mace:shibboleth:2.0:native:sp:config"
 	xmlns="http://www.w3.org/2001/XMLSchema"
 	xmlns:conf="urn:mace:shibboleth:2.0:native:sp:config"
-  xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
+	xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
 	xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
 	xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
 	xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata"
@@ -46,12 +46,14 @@
     </restriction>
   </simpleType>
 
-  <simpleType name="relayStateLimitType">
+  <simpleType name="redirectLimitType">
     <restriction base="string">
       <enumeration value="none"/>
       <enumeration value="exact"/>
       <enumeration value="host"/>
       <enumeration value="whitelist"/>
+      <enumeration value="exact+whitelist"/>
+      <enumeration value="host+whitelist"/>
     </restriction>
   </simpleType>
 
@@ -110,6 +112,8 @@
         <attribute name="StorageService" type="IDREF"/>
         <attribute name="cacheAllowance" type="unsignedInt"/>
         <attribute name="cacheTimeout" type="unsignedInt"/> <!-- deprecated -->
+        <attribute name="maintainReverseIndex" type="boolean"/>
+        <attribute name="excludeReverseIndex" type="conf:listOfStrings"/>
         <anyAttribute namespace="##any" processContents="lax"/>
       </restriction>
     </complexContent>
@@ -237,11 +241,14 @@
     <attribute name="authType" type="conf:string"/>
     <attribute name="requireSession" type="boolean"/>
     <attribute name="requireSessionWith" type="conf:string"/>
+    <attribute name="requireLogoutWith" type="anyURI"/>
     <attribute name="exportAssertion" type="boolean"/>
     <attribute name="exportStdVars" type="boolean"/>
+    <attribute name="exportCookie" type="boolean"/>
     <attribute name="redirectToSSL" type="unsignedInt"/>
     <attribute name="entityID" type="anyURI"/>
     <attribute name="discoveryURL" type="anyURI"/>
+    <attribute name="discoveryPolicy" type="conf:string"/>
     <attribute name="isPassive" type="boolean"/>
     <attribute name="returnOnError" type="boolean"/>
     <attribute name="forceAuthn" type="boolean"/>
@@ -399,7 +406,6 @@
     </sequence>
     <attribute name="id" type="conf:string" fixed="default"/>
     <attribute name="entityID" type="anyURI" use="required"/>
-    <attribute name="policyId" type="conf:string"/>
     <attributeGroup ref="conf:ApplicationGroup"/>
     <attributeGroup ref="conf:RelyingPartyGroup"/>
     <anyAttribute namespace="##other" processContents="lax"/>
@@ -426,7 +432,6 @@
     </sequence>
     <attribute name="id" type="conf:string" use="required"/>
     <attribute name="entityID" type="anyURI"/>
-    <attribute name="policyId" type="conf:string"/>
     <attributeGroup ref="conf:ApplicationGroup"/>
     <attributeGroup ref="conf:RelyingPartyGroup"/>
     <anyAttribute namespace="##other" processContents="lax"/>
@@ -434,10 +439,12 @@
 
   <attributeGroup name="ApplicationGroup">
     <attribute name="homeURL" type="anyURI"/>
+    <attribute name="policyId" type="conf:string"/>
     <attribute name="REMOTE_USER" type="conf:listOfStrings"/>
     <attribute name="unsetHeaders" type="conf:listOfStrings"/>
     <attribute name="metadataAttributePrefix" type="conf:string"/>
     <attribute name="attributePrefix" type="conf:string"/>
+    <attribute name="requireAuthenticatedEncryption" type="boolean"/>
   </attributeGroup>
 
   <attributeGroup name="RelyingPartyGroup">
@@ -457,6 +464,8 @@
     <attribute name="requireConfidentiality" type="boolean"/>
     <attribute name="requireTransportAuth" type="boolean"/>
     <attribute name="requireSignedAssertions" type="boolean"/>
+    <attribute name="sessionHook" type="anyURI"/>
+    <attribute name="artifactByFilesystem" type="boolean"/>
   </attributeGroup>
     
   <complexType name="SessionsType">
@@ -524,8 +533,10 @@
     <attribute name="postTemplate" type="conf:string"/>
     <attribute name="postExpire" type="boolean"/>
     <attribute name="relayState" type="conf:string"/>
-    <attribute name="relayStateLimit" type="conf:relayStateLimitType"/>
+    <attribute name="relayStateLimit" type="conf:redirectLimitType"/>
     <attribute name="relayStateWhitelist" type="conf:listOfURIs"/>
+    <attribute name="redirectLimit" type="conf:redirectLimitType"/>
+    <attribute name="redirectWhitelist" type="conf:listOfURIs"/>
     <anyAttribute namespace="##other" processContents="lax"/>
   </complexType>
 
@@ -556,6 +567,7 @@
     <attribute name="SPNameQualifier" type="conf:string"/>
     <attribute name="requestDelegation" type="boolean"/>
     <attribute name="target" type="anyURI"/>
+    <attribute name="discoveryPolicy" type="conf:string"/>
     <anyAttribute namespace="##any" processContents="lax"/>
   </attributeGroup>
 
@@ -642,9 +654,6 @@
     <attribute name="localLogout" type="anyURI"/>
     <attribute name="globalLogout" type="anyURI"/>
     <attribute name="partialLogout" type="anyURI"/>
-    <attribute name="supportContact" type="conf:string"/>
-    <attribute name="logoLocation" type="anyURI"/>
-    <attribute name="styleSheet" type="anyURI"/>
     <anyAttribute namespace="##any" processContents="lax"/>
   </complexType>
 
@@ -652,11 +661,14 @@
     <annotation>
       <documentation>Container for specifying settings to use with particular peers</documentation>
     </annotation>
-    <sequence/>
-    <attribute name="Name" type="conf:string" use="required"/>
+    <sequence>
+      <any namespace="##any" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+    </sequence>
+    <attribute name="Name" type="conf:string"/>
+    <attribute name="type" type="conf:string"/>
     <attributeGroup ref="conf:RelyingPartyGroup"/>
     <attribute name="entityID" type="anyURI"/>
-    <anyAttribute namespace="##other" processContents="lax"/>
+    <anyAttribute namespace="##any" processContents="lax"/>
   </complexType>
 
   <complexType name="NotifyType">
@@ -698,7 +710,15 @@
         </element>
         <choice minOccurs="0">
           <element name="AlgorithmWhitelist" type="conf:listOfURIs"/>
-          <element name="AlgorithmBlacklist" type="conf:listOfURIs"/>
+          <element name="AlgorithmBlacklist">
+            <complexType>
+              <simpleContent>
+                <extension base="conf:listOfURIs">
+                  <attribute name="includeDefaultBlacklist" type="boolean"/>
+                </extension>
+              </simpleContent>
+            </complexType>
+          </element>
         </choice>
       </sequence>
     </complexType>
@@ -762,6 +782,9 @@
       <attribute name="clockSkew" type="unsignedInt"/>
       <attribute name="unsafeChars" type="conf:string"/>
       <attribute name="allowedSchemes" type="conf:listOfStrings"/>
+      <attribute name="langFromClient" type="boolean"/>
+      <attribute name="langPriority" type="conf:listOfStrings"/>
+      <attribute name="contactPriority" type="conf:listOfStrings"/>
       <anyAttribute namespace="##other" processContents="lax"/>
     </complexType>
   </element>
