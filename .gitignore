@@ -135,12 +135,16 @@
 /msi/WiX/*.wixobj
 /msi/WiX/*.wixpdb
 /msi/WiX/*.msi
+/msi/WiX/Debug
+/msi/WiX/Release
 
 # /msi/WiX/MergeModules
 /msi/WiX/MergeModules/*.wixobj
 /msi/WiX/MergeModules/*.wixpdb
 /msi/WiX/MergeModules/*.msm
-/msi/Wix/MergeModules/*.msi
+/msi/WiX/MergeModules/*.msi
+/msi/WiX/MergeModules/Debug
+/msi/WiX/MergeModules/Release
 
 # /nsapi_shib/
 /nsapi_shib/*.plg
