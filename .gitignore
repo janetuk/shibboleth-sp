@@ -132,11 +132,11 @@
 /msi/compile.log
 
 # /msi/WiX
-/msi/WiX/*.wixobj
-/msi/WiX/*.wixpdb
+/msi/WiX/*.wix*
 /msi/WiX/*.msi
 /msi/WiX/Debug
 /msi/WiX/Release
+/msi/WiX/x64
 
 # /msi/WiX/MergeModules
 /msi/WiX/MergeModules/*.wixobj
@@ -145,6 +145,8 @@
 /msi/WiX/MergeModules/*.msi
 /msi/WiX/MergeModules/Debug
 /msi/WiX/MergeModules/Release
+/msi/WiX/MergeModules/x64
+/msi/WiX/MergeModules/*.user
 
 # /nsapi_shib/
 /nsapi_shib/*.plg
