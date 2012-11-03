@@ -5,5 +5,4 @@ debian/tmp/usr/lib/shibboleth
 
 debian/shib2.load	etc/apache2/mods-available
 
-debian/tmp/usr/share/shibboleth/logo.jpg	usr/share/shibboleth
 debian/tmp/usr/share/shibboleth/main.css	usr/share/shibboleth

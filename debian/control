@@ -6,8 +6,8 @@ Uploaders: Russ Allbery <rra@debian.org>, Ferenc Wagner <wferi@niif.hu>,
  Faidon Liambotis <paravoid@debian.org>
 Build-Depends: debhelper (>= 8), apache2-threaded-dev, autoconf, automake,
  autotools-dev, doxygen, graphviz, liblog4cpp5-dev, libmemcached-dev,
- libsaml2-dev (>= 2.5~), libssl-dev, libtool, libxerces-c-dev,
- libxml-security-c-dev (>= 1.6), libxmltooling-dev (>= 1.5~),
+ libsaml2-dev (>= 2.5+dfsg~moonshot4), libssl-dev, libtool, libxerces-c-dev,
+ libxml-security-c-dev (>= 1.6), libxmltooling-dev (>= 1.5+dfsg~moonshot4),
  opensaml2-schemas, pkg-config, unixodbc-dev, xmltooling-schemas, libkrb5-dev
 Standards-Version: 3.9.1
 Homepage: http://shibboleth.internet2.edu/
