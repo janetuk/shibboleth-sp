@@ -79,6 +79,7 @@
 using namespace shibsp;
 using namespace opensaml;
 using namespace xmltooling;
+using namespace boost;
 using namespace std;
 
 DECL_XMLTOOLING_EXCEPTION_FACTORY(AttributeException,shibsp);
@@ -101,15 +102,15 @@ namespace shibsp {
     class SHIBSP_DLLLOCAL SPInternalConfig : public SPConfig
     {
     public:
-        SPInternalConfig();
-        ~SPInternalConfig();
+        SPInternalConfig() : m_initCount(0), m_lock(Mutex::create()) {}
+        ~SPInternalConfig() {}
 
         bool init(const char* catalog_path=nullptr, const char* inst_prefix=nullptr);
         void term();
 
     private:
         int m_initCount;
-        Mutex* m_lock;
+        scoped_ptr<Mutex> m_lock;
     };
     
     SPInternalConfig g_config;
@@ -182,26 +183,26 @@ bool SPConfig::init(const char* catalog_path, const char* inst_prefix)
         ++inst_prefix;
     }
 
-    const char* loglevel=getenv("SHIBSP_LOGGING");
-    if (!loglevel)
-        loglevel = SHIBSP_LOGGING;
-    std::string ll(loglevel);
+    const char* logconf = getenv("SHIBSP_LOGGING");
+    if (!logconf || !*logconf) {
+        if (isEnabled(SPConfig::Logging) && isEnabled(SPConfig::OutOfProcess) && !isEnabled(SPConfig::InProcess))
+            logconf = SHIBSP_OUTOFPROC_LOGGING;
+        else if (isEnabled(SPConfig::Logging) && isEnabled(SPConfig::InProcess) && !isEnabled(SPConfig::OutOfProcess))
+            logconf = SHIBSP_INPROC_LOGGING;
+        else
+            logconf = SHIBSP_LOGGING;
+    }
     PathResolver localpr;
     localpr.setDefaultPrefix(inst_prefix2.c_str());
     inst_prefix = getenv("SHIBSP_CFGDIR");
-    if (!inst_prefix)
+    if (!inst_prefix || !*inst_prefix)
         inst_prefix = SHIBSP_CFGDIR;
     localpr.setCfgDir(inst_prefix);
-    XMLToolingConfig::getConfig().log_config(localpr.resolve(ll, PathResolver::XMLTOOLING_CFG_FILE, PACKAGE_NAME).c_str());
+    std::string lc(logconf);
+    XMLToolingConfig::getConfig().log_config(localpr.resolve(lc, PathResolver::XMLTOOLING_CFG_FILE, PACKAGE_NAME).c_str());
 
     Category& log=Category::getInstance(SHIBSP_LOGCAT".Config");
     log.debug("%s library initialization started", PACKAGE_STRING);
-
-    if (!catalog_path)
-        catalog_path = getenv("SHIBSP_SCHEMAS");
-    if (!catalog_path)
-        catalog_path = SHIBSP_SCHEMAS;
-    XMLToolingConfig::getConfig().catalog_path = catalog_path;
 
 #ifndef SHIBSP_LITE
     XMLToolingConfig::getConfig().user_agent = string(PACKAGE_NAME) + '/' + PACKAGE_VERSION +
@@ -232,24 +233,36 @@ bool SPConfig::init(const char* catalog_path, const char* inst_prefix)
         return false;
     }
 #endif
+    if (!catalog_path)
+        catalog_path = getenv("SHIBSP_SCHEMAS");
+    if (!catalog_path || !*catalog_path)
+        catalog_path = SHIBSP_SCHEMAS;
+    if (!XMLToolingConfig::getConfig().getValidatingParser().loadCatalogs(catalog_path)) {
+        log.warn("failed to load schema catalogs into validating parser");
+    }
+
     PathResolver* pr = XMLToolingConfig::getConfig().getPathResolver();
     pr->setDefaultPackageName(PACKAGE_NAME);
     pr->setDefaultPrefix(inst_prefix2.c_str());
     pr->setCfgDir(inst_prefix);
     inst_prefix = getenv("SHIBSP_LIBDIR");
-    if (!inst_prefix)
+    if (!inst_prefix || !*inst_prefix)
         inst_prefix = SHIBSP_LIBDIR;
     pr->setLibDir(inst_prefix);
     inst_prefix = getenv("SHIBSP_LOGDIR");
-    if (!inst_prefix)
+    if (!inst_prefix || !*inst_prefix)
         inst_prefix = SHIBSP_LOGDIR;
     pr->setLogDir(inst_prefix);
     inst_prefix = getenv("SHIBSP_RUNDIR");
-    if (!inst_prefix)
+    if (!inst_prefix || !*inst_prefix)
         inst_prefix = SHIBSP_RUNDIR;
     pr->setRunDir(inst_prefix);
+    inst_prefix = getenv("SHIBSP_CACHEDIR");
+    if (!inst_prefix || !*inst_prefix)
+        inst_prefix = SHIBSP_CACHEDIR;
+    pr->setCacheDir(inst_prefix);
     inst_prefix = getenv("SHIBSP_XMLDIR");
-    if (!inst_prefix)
+    if (!inst_prefix || !*inst_prefix)
         inst_prefix = SHIBSP_XMLDIR;
     pr->setXMLDir(inst_prefix);
 
@@ -439,15 +452,6 @@ bool SPConfig::instantiate(const char* config, bool rethrow)
         Category::getInstance(SHIBSP_LOGCAT".Config").fatal("caught exception while loading configuration: %s", ex.what());
     }
     return false;
-}
-
-SPInternalConfig::SPInternalConfig() : m_initCount(0), m_lock(Mutex::create())
-{
-}
-
-SPInternalConfig::~SPInternalConfig()
-{
-    delete m_lock;
 }
 
 bool SPInternalConfig::init(const char* catalog_path, const char* inst_prefix)

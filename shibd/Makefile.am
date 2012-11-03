@@ -1,5 +1,3 @@
-## $Id: Makefile.am 3379 2010-11-19 20:59:17Z cantor $
-
 AUTOMAKE_OPTIONS = foreign
 
 sbin_PROGRAMS = shibd

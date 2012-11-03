@@ -82,6 +82,11 @@ const char* SessionInitiator::getType() const
 
 void SessionInitiator::generateMetadata(SPSSODescriptor& role, const char* handlerURL) const
 {
+    // In case any plugins were directly calling this before, we stub it out.
+}
+
+void SessionInitiator::doGenerateMetadata(SPSSODescriptor& role, const char* handlerURL) const
+{
     if (getParent())
         return;
     const char* loc = getString("Location").second;
@@ -143,6 +148,8 @@ bool SessionInitiator::checkCompatibility(SPRequest& request, bool isHandler) co
 
 pair<bool,long> SessionInitiator::run(SPRequest& request, bool isHandler) const
 {
+    cleanRelayState(request.getApplication(), request, request);
+
     const char* entityID = nullptr;
     pair<bool,const char*> param = getString("entityIDParam");
     if (isHandler) {

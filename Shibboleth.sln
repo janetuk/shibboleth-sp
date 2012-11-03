@@ -7,6 +7,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Utilities", "Utilities", "{FED80230-119E-4B2F-9F53-D2660A5F022B}"
 	ProjectSection(SolutionItems) = preProject
 		util\Makefile.am = util\Makefile.am
+		util\resource.h = util\resource.h
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "fastcgi", "fastcgi", "{8E1AF2CF-24E1-4983-8681-394D89DF9AD2}"
@@ -35,7 +36,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Config", "Config", "{2543BC
 		configs\accessError.html = configs\accessError.html
 		configs\apache.config.in = configs\apache.config.in
 		configs\apache2.config.in = configs\apache2.config.in
-		configs\apache22.config.in = configs\apache22.config.in
+		configs\apache24.config.in = configs\apache24.config.in
+		configs\attrChecker.html = configs\attrChecker.html
 		configs\attribute-map.xml = configs\attribute-map.xml
 		configs\attribute-policy.xml = configs\attribute-policy.xml
 		configs\bindingTemplate.html = configs\bindingTemplate.html
@@ -55,10 +57,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Config", "Config", "{2543BC
 		configs\postTemplate.html = configs\postTemplate.html
 		configs\protocols.xml = configs\protocols.xml
 		configs\security-policy.xml = configs\security-policy.xml
-		configs\sessionError.html = configs\sessionError.html
+		configs\SetService32.bat = configs\SetService32.bat
+		configs\SetService64.bat = configs\SetService64.bat
 		configs\shibboleth2.xml = configs\shibboleth2.xml
 		configs\shibd-debian.in = configs\shibd-debian.in
 		configs\shibd-osx.plist.in = configs\shibd-osx.plist.in
+		configs\shibd-redhat.in = configs\shibd-redhat.in
 		configs\shibd-suse.in = configs\shibd-suse.in
 		configs\shibd.logger.in = configs\shibd.logger.in
 		configs\sslError.html = configs\sslError.html
@@ -72,11 +76,14 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Misc", "Misc", "{31B171C1-E
 	ProjectSection(SolutionItems) = preProject
 		m4\acinclude.m4 = m4\acinclude.m4
 		m4\acx_pthread.m4 = m4\acx_pthread.m4
+		m4\boost.m4 = m4\boost.m4
+		config_win32.h = config_win32.h
 		configure.ac = configure.ac
 		doxygen.am = doxygen.am
 		doxygen.cfg = doxygen.cfg
 		m4\doxygen.m4 = m4\doxygen.m4
 		Makefile.am = Makefile.am
+		shibboleth.spec.in = shibboleth.spec.in
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{6ED5E3E7-1B0E-43FB-A8D1-77A0FCAE9AC8}"
@@ -85,7 +92,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{6ED5E3E7-1B0
 		doc\FASTCGI.LICENSE = doc\FASTCGI.LICENSE
 		doc\LICENSE.txt = doc\LICENSE.txt
 		doc\LOG4CPP.LICENSE = doc\LOG4CPP.LICENSE
-		doc\logo.jpg = doc\logo.jpg
 		doc\main.css = doc\main.css
 		doc\Makefile.am = doc\Makefile.am
 		doc\NOTICE.txt = doc\NOTICE.txt
@@ -127,6 +133,13 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "memcache-store", "memcache-store\memcache-store.vcxproj", "{666A63A7-983F-4C19-8411-207F24305198}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "plugins", "plugins\plugins.vcxproj", "{A2140D6E-C2C6-4329-84E3-2F530CEBE445}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mod_shib_24", "apache\mod_shib24.vcxproj", "{B44C0852-83B8-4FB2-A86E-097C9C8256D1}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "plugins-lite", "plugins\plugins-lite.vcxproj", "{A2140D6E-C2C6-4329-84E3-2F530CEBE442}"
+	ProjectSection(ProjectDependencies) = postProject
+		{81F0F7A6-DC36-46EF-957F-F9E81D4403F7} = {81F0F7A6-DC36-46EF-957F-F9E81D4403F7}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -262,6 +275,22 @@ Global
 		{A2140D6E-C2C6-4329-84E3-2F530CEBE445}.Release|Win32.Build.0 = Release|Win32
 		{A2140D6E-C2C6-4329-84E3-2F530CEBE445}.Release|x64.ActiveCfg = Release|x64
 		{A2140D6E-C2C6-4329-84E3-2F530CEBE445}.Release|x64.Build.0 = Release|x64
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1}.Debug|Win32.ActiveCfg = Debug|Win32
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1}.Debug|Win32.Build.0 = Debug|Win32
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1}.Debug|x64.ActiveCfg = Debug|x64
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1}.Debug|x64.Build.0 = Debug|x64
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1}.Release|Win32.ActiveCfg = Release|Win32
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1}.Release|Win32.Build.0 = Release|Win32
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1}.Release|x64.ActiveCfg = Release|x64
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1}.Release|x64.Build.0 = Release|x64
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442}.Debug|Win32.ActiveCfg = Debug|Win32
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442}.Debug|Win32.Build.0 = Debug|Win32
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442}.Debug|x64.ActiveCfg = Debug|x64
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442}.Debug|x64.Build.0 = Debug|x64
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442}.Release|Win32.ActiveCfg = Release|Win32
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442}.Release|Win32.Build.0 = Release|Win32
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442}.Release|x64.ActiveCfg = Release|x64
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -273,11 +302,13 @@ Global
 		{68E9568B-476C-4289-B93C-893432378ADC} = {26BA8F84-6E42-41FA-9B13-5D3F4B5B2050}
 		{1396D80A-8672-4224-9B02-95F3F4207CDB} = {26BA8F84-6E42-41FA-9B13-5D3F4B5B2050}
 		{B44C0852-83B8-4FB2-A86E-097C9C8256D0} = {26BA8F84-6E42-41FA-9B13-5D3F4B5B2050}
+		{B44C0852-83B8-4FB2-A86E-097C9C8256D1} = {26BA8F84-6E42-41FA-9B13-5D3F4B5B2050}
 		{666A63A7-983F-4C19-8411-207F24305197} = {96AE4FC9-45EF-4C18-9F3B-EDA439E26E4C}
 		{26D4FABF-ACDE-4947-9C4A-7AE1B50CD83A} = {96AE4FC9-45EF-4C18-9F3B-EDA439E26E4C}
 		{26D4FABF-ACDE-4947-9C4A-7AE1B50CD83B} = {96AE4FC9-45EF-4C18-9F3B-EDA439E26E4C}
 		{666A63A7-983F-4C19-8411-207F24305198} = {96AE4FC9-45EF-4C18-9F3B-EDA439E26E4C}
 		{A2140D6E-C2C6-4329-84E3-2F530CEBE445} = {96AE4FC9-45EF-4C18-9F3B-EDA439E26E4C}
+		{A2140D6E-C2C6-4329-84E3-2F530CEBE442} = {96AE4FC9-45EF-4C18-9F3B-EDA439E26E4C}
 		{F13141B6-6C87-40BB-8D4E-5CC56EBB4C5A} = {FED80230-119E-4B2F-9F53-D2660A5F022B}
 		{F13141B6-6C87-40BB-8D4E-5CC56EBB4C59} = {FED80230-119E-4B2F-9F53-D2660A5F022B}
 		{8CF7DDFA-EAA0-416E-853E-3DCB210C4AE0} = {8E1AF2CF-24E1-4983-8681-394D89DF9AD2}

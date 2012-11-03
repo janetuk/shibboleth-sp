@@ -29,25 +29,30 @@
 #include "exceptions.h"
 #include "ServiceProvider.h"
 #include "SPRequest.h"
-#include "handler/AbstractHandler.h"
 #include "handler/RemotedHandler.h"
-#include "util/IPRange.h"
+#include "handler/SecuredHandler.h"
+
+#include <boost/scoped_ptr.hpp>
+#include <boost/iterator/indirect_iterator.hpp>
 
 #ifndef SHIBSP_LITE
 # include "attribute/resolver/AttributeExtractor.h"
 # include "metadata/MetadataProviderCriteria.h"
+# include <boost/ptr_container/ptr_vector.hpp>
 # include <saml/exceptions.h>
 # include <saml/SAMLConfig.h>
 # include <saml/signature/ContentReference.h>
 # include <saml/saml2/metadata/Metadata.h>
 # include <saml/saml2/metadata/MetadataProvider.h>
 # include <xmltooling/XMLToolingConfig.h>
+# include <xmltooling/encryption/Encryption.h>
 # include <xmltooling/security/Credential.h>
 # include <xmltooling/security/CredentialCriteria.h>
 # include <xmltooling/security/SecurityHelper.h>
 # include <xmltooling/signature/Signature.h>
 # include <xmltooling/util/ParserPool.h>
 # include <xmltooling/util/PathResolver.h>
+# include <xsec/dsig/DSIGConstants.hpp>
 # include <xercesc/framework/LocalFileInputSource.hpp>
 # include <xercesc/framework/Wrapper4InputSource.hpp>
 #endif
@@ -58,8 +63,10 @@ using namespace shibsp;
 using namespace opensaml::saml2md;
 using namespace opensaml;
 using namespace xmlsignature;
+using namespace xmlencryption;
 #endif
 using namespace xmltooling;
+using namespace boost;
 using namespace std;
 
 namespace shibsp {
@@ -69,36 +76,11 @@ namespace shibsp {
     #pragma warning( disable : 4250 )
 #endif
 
-    class SHIBSP_DLLLOCAL Blocker : public DOMNodeFilter
-    {
-    public:
-#ifdef SHIBSP_XERCESC_SHORT_ACCEPTNODE
-        short
-#else
-        FilterAction
-#endif
-        acceptNode(const DOMNode* node) const {
-            return FILTER_REJECT;
-        }
-    };
-
-    static SHIBSP_DLLLOCAL Blocker g_Blocker;
-
-    class SHIBSP_API MetadataGenerator : public AbstractHandler, public RemotedHandler
+    class SHIBSP_API MetadataGenerator : public SecuredHandler, public RemotedHandler
     {
     public:
         MetadataGenerator(const DOMElement* e, const char* appId);
-        virtual ~MetadataGenerator() {
-#ifndef SHIBSP_LITE
-            delete m_uiinfo;
-            delete m_org;
-            delete m_entityAttrs;
-            for_each(m_contacts.begin(), m_contacts.end(), xmltooling::cleanup<ContactPerson>());
-            for_each(m_formats.begin(), m_formats.end(), xmltooling::cleanup<NameIDFormat>());
-            for_each(m_reqAttrs.begin(), m_reqAttrs.end(), xmltooling::cleanup<RequestedAttribute>());
-            for_each(m_attrConsumers.begin(), m_attrConsumers.end(), xmltooling::cleanup<AttributeConsumingService>());
-#endif
-        }
+        virtual ~MetadataGenerator() {}
 
         pair<bool,long> run(SPRequest& request, bool isHandler=true) const;
         void receive(DDF& in, ostream& out);
@@ -111,18 +93,84 @@ namespace shibsp {
             HTTPResponse& httpResponse
             ) const;
 
-        vector<IPRange> m_acl;
 #ifndef SHIBSP_LITE
+        void registerEncryptionMethod(const XMLCh* alg) {
+            if (XMLToolingConfig::getConfig().isXMLAlgorithmSupported(alg, XMLToolingConfig::ALGTYPE_ENCRYPT) ||
+                XMLToolingConfig::getConfig().isXMLAlgorithmSupported(alg, XMLToolingConfig::ALGTYPE_KEYENCRYPT) ||
+                XMLToolingConfig::getConfig().isXMLAlgorithmSupported(alg, XMLToolingConfig::ALGTYPE_KEYAGREE)) {
+                // Non-default builder needed to override namespace/prefix.
+                if (!m_encryptionBuilder)
+                    m_encryptionBuilder = XMLObjectBuilder::getBuilder(xmltooling::QName(samlconstants::SAML20MD_NS, EncryptionMethod::LOCAL_NAME));
+                EncryptionMethod* em = dynamic_cast<EncryptionMethod*>(
+                    m_encryptionBuilder->buildObject(
+                        samlconstants::SAML20MD_NS, EncryptionMethod::LOCAL_NAME, samlconstants::SAML20MD_PREFIX
+                        )
+                    );
+                em->setAlgorithm(alg);
+                m_encryptions.push_back(em);
+
+                if (
+#ifdef URI_ID_RSA_OAEP
+                    XMLString::equals(alg, DSIGConstants::s_unicodeStrURIRSA_OAEP) ||
+#endif
+                    XMLString::equals(alg, DSIGConstants::s_unicodeStrURIRSA_OAEP_MGFP1)) {
+                    // Check for non-support of SHA-256. This is a reasonable guess as to whether
+                    // "all" standard digests and MGF variants will be supported or not, and if not, we
+                    // explicitly advertise only SHA-1.
+                    if (!XMLToolingConfig::getConfig().isXMLAlgorithmSupported(DSIGConstants::s_unicodeStrURISHA256, XMLToolingConfig::ALGTYPE_DIGEST)) {
+                        if (!m_digestBuilder)
+                            m_digestBuilder = XMLObjectBuilder::getBuilder(xmltooling::QName(samlconstants::SAML20MD_ALGSUPPORT_NS, DigestMethod::LOCAL_NAME));
+                        
+#ifdef URI_ID_RSA_OAEP
+                        // Add MGF for new OAEP variant.
+                        if (XMLString::equals(alg, DSIGConstants::s_unicodeStrURIRSA_OAEP)) {
+                            MGF* mgf = MGFBuilder::buildMGF();
+                            mgf->setAlgorithm(DSIGConstants::s_unicodeStrURIMGF1_SHA1);
+                            em->getUnknownXMLObjects().push_back(mgf);
+                        }
+#endif
+
+                        DigestMethod* dm = dynamic_cast<DigestMethod*>(
+                            m_digestBuilder->buildObject(xmlconstants::XMLSIG_NS, DigestMethod::LOCAL_NAME, xmlconstants::XMLSIG_PREFIX)
+                            );
+                        dm->setAlgorithm(DSIGConstants::s_unicodeStrURISHA1);
+                        em->getUnknownXMLObjects().push_back(dm);
+                    }
+                }
+            }
+        }
+
+        void registerDigestMethod(const XMLCh* alg) {
+            if (XMLToolingConfig::getConfig().isXMLAlgorithmSupported(alg, XMLToolingConfig::ALGTYPE_DIGEST)) {
+                DigestMethod* dm = DigestMethodBuilder::buildDigestMethod();
+                dm->setAlgorithm(alg);
+                m_digests.push_back(dm);
+            }
+        }
+
+        void registerSigningMethod(const XMLCh* alg) {
+            if (XMLToolingConfig::getConfig().isXMLAlgorithmSupported(alg, XMLToolingConfig::ALGTYPE_SIGN)) {
+                SigningMethod* sm = SigningMethodBuilder::buildSigningMethod();
+                sm->setAlgorithm(alg);
+                m_signings.push_back(sm);
+            }
+        }
+
         string m_salt;
         short m_http,m_https;
         vector<string> m_bases;
-        UIInfo* m_uiinfo;
-        Organization* m_org;
-        EntityAttributes* m_entityAttrs;
-        vector<ContactPerson*> m_contacts;
-        vector<NameIDFormat*> m_formats;
-        vector<RequestedAttribute*> m_reqAttrs;
-        vector<AttributeConsumingService*> m_attrConsumers;
+        scoped_ptr<UIInfo> m_uiinfo;
+        scoped_ptr<Organization> m_org;
+        scoped_ptr<EntityAttributes> m_entityAttrs;
+        ptr_vector<ContactPerson> m_contacts;
+        ptr_vector<NameIDFormat> m_formats;
+        ptr_vector<RequestedAttribute> m_reqAttrs;
+        ptr_vector<AttributeConsumingService> m_attrConsumers;
+        ptr_vector<EncryptionMethod> m_encryptions;
+        ptr_vector<DigestMethod> m_digests;
+        ptr_vector<SigningMethod> m_signings;
+        const XMLObjectBuilder* m_encryptionBuilder;
+        const XMLObjectBuilder* m_digestBuilder;
 #endif
     };
 
@@ -138,47 +186,17 @@ namespace shibsp {
 };
 
 MetadataGenerator::MetadataGenerator(const DOMElement* e, const char* appId)
-    : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".MetadataGenerator"), &g_Blocker)
+    : SecuredHandler(e, Category::getInstance(SHIBSP_LOGCAT".MetadataGenerator"))
 #ifndef SHIBSP_LITE
-        ,m_http(0), m_https(0), m_uiinfo(nullptr), m_org(nullptr), m_entityAttrs(nullptr)
+        ,m_http(0), m_https(0), m_encryptionBuilder(nullptr), m_digestBuilder(nullptr)
 #endif
 {
     string address(appId);
     address += getString("Location").second;
     setAddress(address.c_str());
 
-    if (SPConfig::getConfig().isEnabled(SPConfig::InProcess)) {
-        pair<bool,const char*> acl = getString("acl");
-        if (acl.first) {
-            string aclbuf=acl.second;
-            int j = 0;
-            for (unsigned int i=0;  i < aclbuf.length();  ++i) {
-                if (aclbuf.at(i)==' ') {
-                    try {
-                        m_acl.push_back(IPRange::parseCIDRBlock(aclbuf.substr(j, i-j).c_str()));
-                    }
-                    catch (exception& ex) {
-                        m_log.error("invalid CIDR block (%s): %s", aclbuf.substr(j, i-j).c_str(), ex.what());
-                    }
-                    j = i + 1;
-                }
-            }
-            try {
-                m_acl.push_back(IPRange::parseCIDRBlock(aclbuf.substr(j, aclbuf.length()-j).c_str()));
-            }
-            catch (exception& ex) {
-                m_log.error("invalid CIDR block (%s): %s", aclbuf.substr(j, aclbuf.length()-j).c_str(), ex.what());
-            }
-
-            if (m_acl.empty()) {
-                m_log.warn("invalid CIDR range(s) in Metadata Generator acl property, allowing 127.0.0.1 as a fall back");
-                m_acl.push_back(IPRange::parseCIDRBlock("127.0.0.1"));
-            }
-        }
-    }
-
 #ifndef SHIBSP_LITE
-    static XMLCh EndpointBase[] = UNICODE_LITERAL_12(E,n,d,p,o,i,n,t,B,a,s,e);
+    static XMLCh EndpointBase[] =           UNICODE_LITERAL_12(E,n,d,p,o,i,n,t,B,a,s,e);
 
     pair<bool,const char*> salt = getString("salt");
     if (salt.first)
@@ -203,33 +221,33 @@ MetadataGenerator::MetadataGenerator(const DOMElement* e, const char* appId)
             auto_ptr<XMLObject> child(XMLObjectBuilder::buildOneFromElement(const_cast<DOMElement*>(e)));
             ContactPerson* cp = dynamic_cast<ContactPerson*>(child.get());
             if (cp) {
-                child.release();
                 m_contacts.push_back(cp);
+                child.release();
             }
             else {
                 NameIDFormat* nif = dynamic_cast<NameIDFormat*>(child.get());
                 if (nif) {
-                    child.release();
                     m_formats.push_back(nif);
+                    child.release();
                 }
                 else {
                     RequestedAttribute* req = dynamic_cast<RequestedAttribute*>(child.get());
                     if (req) {
-                        child.release();
                         m_reqAttrs.push_back(req);
+                        child.release();
                     }
                     else {
                         AttributeConsumingService* acs = dynamic_cast<AttributeConsumingService*>(child.get());
                         if (acs) {
-                            child.release();
                             m_attrConsumers.push_back(acs);
+                            child.release();
                         }
                         else {
                             UIInfo* info = dynamic_cast<UIInfo*>(child.get());
                             if (info) {
                                 if (!m_uiinfo) {
+                                    m_uiinfo.reset(info);
                                     child.release();
-                                    m_uiinfo = info;
                                 }
                                 else {
                                     m_log.warn("skipping duplicate UIInfo element");
@@ -239,8 +257,8 @@ MetadataGenerator::MetadataGenerator(const DOMElement* e, const char* appId)
                                 Organization* org = dynamic_cast<Organization*>(child.get());
                                 if (org) {
                                     if (!m_org) {
+                                        m_org.reset(org);
                                         child.release();
-                                        m_org = org;
                                     }
                                     else {
                                         m_log.warn("skipping duplicate Organization element");
@@ -250,11 +268,32 @@ MetadataGenerator::MetadataGenerator(const DOMElement* e, const char* appId)
                                     EntityAttributes* ea = dynamic_cast<EntityAttributes*>(child.get());
                                     if (ea) {
                                         if (!m_entityAttrs) {
+                                            m_entityAttrs.reset(ea);
                                             child.release();
-                                            m_entityAttrs = ea;
                                         }
                                         else {
                                             m_log.warn("skipping duplicate EntityAttributes element");
+                                        }
+                                    }
+                                    else {
+                                        EncryptionMethod* em = dynamic_cast<EncryptionMethod*>(child.get());
+                                        if (em) {
+                                            m_encryptions.push_back(em);
+                                            child.release();
+                                        }
+                                        else {
+                                            DigestMethod* dm = dynamic_cast<DigestMethod*>(child.get());
+                                            if (dm) {
+                                                m_digests.push_back(dm);
+                                                child.release();
+                                            }
+                                            else {
+                                                SigningMethod* sm = dynamic_cast<SigningMethod*>(child.get());
+                                                if (sm) {
+                                                    m_signings.push_back(sm);
+                                                    child.release();
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -266,26 +305,70 @@ MetadataGenerator::MetadataGenerator(const DOMElement* e, const char* appId)
         }
         e = XMLHelper::getNextSiblingElement(e);
     }
+
+    // Default in precedence rules for various algorithms.
+    if (m_encryptions.empty()) {
+#ifdef XSEC_OPENSSL_HAVE_GCM
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIAES128_GCM);
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIAES192_GCM);
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIAES256_GCM);
+#endif
+#ifdef XSEC_OPENSSL_HAVE_AES
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIAES128_CBC);
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIAES192_CBC);
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIAES256_CBC);
+#endif
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURI3DES_CBC);
+#ifdef URI_ID_RSA_OAEP
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIRSA_OAEP);
+#endif
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIRSA_OAEP_MGFP1);
+        registerEncryptionMethod(DSIGConstants::s_unicodeStrURIRSA_1_5);
+    }
+
+    if (m_digests.empty()) {
+        registerDigestMethod(DSIGConstants::s_unicodeStrURISHA512);
+        registerDigestMethod(DSIGConstants::s_unicodeStrURISHA384);
+        registerDigestMethod(DSIGConstants::s_unicodeStrURISHA256);
+        registerDigestMethod(DSIGConstants::s_unicodeStrURISHA224);
+        registerDigestMethod(DSIGConstants::s_unicodeStrURISHA1);
+    }
+
+    if (m_signings.empty()) {
+#ifdef XSEC_OPENSSL_HAVE_EC
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIECDSA_SHA512);
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIECDSA_SHA384);
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIECDSA_SHA256);
+# ifdef URI_ID_ECDSA_SHA224
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIECDSA_SHA224);
+# endif
+#endif
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIRSA_SHA512);
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIRSA_SHA384);
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIRSA_SHA256);
+
+#ifdef URI_ID_DSA_SHA256
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIDSA_SHA256);
+#endif
+
+#ifdef XSEC_OPENSSL_HAVE_EC
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIECDSA_SHA1);
+#endif
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIRSA_SHA1);
+        registerSigningMethod(DSIGConstants::s_unicodeStrURIDSA_SHA1);
+    }
 #endif
 }
 
 pair<bool,long> MetadataGenerator::run(SPRequest& request, bool isHandler) const
 {
-    SPConfig& conf = SPConfig::getConfig();
-    if (conf.isEnabled(SPConfig::InProcess) && !m_acl.empty()) {
-        bool found = false;
-        for (vector<IPRange>::const_iterator acl = m_acl.begin(); !found && acl != m_acl.end(); ++acl) {
-            found = acl->contains(request.getRemoteAddr().c_str());
-        }
-        if (!found) {
-            m_log.error("request for metadata blocked from invalid address (%s)", request.getRemoteAddr().c_str());
-            istringstream msg("Metadata Request Blocked");
-            return make_pair(true,request.sendResponse(msg, HTTPResponse::XMLTOOLING_HTTP_STATUS_FORBIDDEN));
-        }
-    }
+    // Check ACL in base class.
+    pair<bool,long> ret = SecuredHandler::run(request, isHandler);
+    if (ret.first)
+        return ret;
 
     try {
-        if (conf.isEnabled(SPConfig::OutOfProcess)) {
+        if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
             // When out of process, we run natively and directly process the message.
             return processMessage(request.getApplication(), request.getHandlerURL(), request.getParameter("entityID"), request);
         }
@@ -298,23 +381,23 @@ pair<bool,long> MetadataGenerator::run(SPRequest& request, bool isHandler) const
                 in.addmember("entity_id").string(request.getParameter("entityID"));
             DDFJanitor jin(in), jout(out);
 
-            out=request.getServiceProvider().getListenerService()->send(in);
+            out = request.getServiceProvider().getListenerService()->send(in);
             return unwrap(request, out);
         }
     }
-    catch (exception& ex) {
+    catch (std::exception& ex) {
         m_log.error("error while processing request: %s", ex.what());
         istringstream msg("Metadata Request Failed");
-        return make_pair(true,request.sendResponse(msg, HTTPResponse::XMLTOOLING_HTTP_STATUS_ERROR));
+        return make_pair(true, request.sendResponse(msg, HTTPResponse::XMLTOOLING_HTTP_STATUS_ERROR));
     }
 }
 
 void MetadataGenerator::receive(DDF& in, ostream& out)
 {
     // Find application.
-    const char* aid=in["application_id"].string();
-    const char* hurl=in["handler_url"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
+    const char* aid = in["application_id"].string();
+    const char* hurl = in["handler_url"].string();
+    const Application* app = aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for metadata request", aid ? aid : "(missing)");
@@ -327,12 +410,12 @@ void MetadataGenerator::receive(DDF& in, ostream& out)
     // Wrap a response shim.
     DDF ret(nullptr);
     DDFJanitor jout(ret);
-    auto_ptr<HTTPResponse> resp(getResponse(ret));
+    scoped_ptr<HTTPResponse> resp(getResponse(ret));
 
     // Since we're remoted, the result should either be a throw, a false/0 return,
     // which we just return as an empty structure, or a response/redirect,
     // which we capture in the facade and send back.
-    processMessage(*app, hurl, in["entity_id"].string(), *resp.get());
+    processMessage(*app, hurl, in["entity_id"].string(), *resp);
     out << ret;
 }
 
@@ -343,9 +426,9 @@ pair<bool,long> MetadataGenerator::processMessage(
 #ifndef SHIBSP_LITE
     m_log.debug("processing metadata request");
 
-    const PropertySet* relyingParty=nullptr;
+    const PropertySet* relyingParty = nullptr;
     if (entityID) {
-        MetadataProvider* m=application.getMetadataProvider();
+        MetadataProvider* m = application.getMetadataProvider();
         Locker locker(m);
         MetadataProviderCriteria mc(application, entityID);
         relyingParty = application.getRelyingParty(m->getEntityDescriptor(mc).first);
@@ -354,7 +437,7 @@ pair<bool,long> MetadataGenerator::processMessage(
         relyingParty = &application;
     }
 
-    EntityDescriptor* entity;
+    scoped_ptr<EntityDescriptor> entity;
     pair<bool,const char*> prop = getString("template");
     if (prop.first) {
         // Load a template to use for our metadata.
@@ -363,17 +446,23 @@ pair<bool,long> MetadataGenerator::processMessage(
         auto_ptr_XMLCh widenit(templ.c_str());
         LocalFileInputSource src(widenit.get());
         Wrapper4InputSource dsrc(&src,false);
-        DOMDocument* doc=XMLToolingConfig::getConfig().getParser().parse(dsrc);
+        DOMDocument* doc = XMLToolingConfig::getConfig().getParser().parse(dsrc);
         XercesJanitor<DOMDocument> docjan(doc);
         auto_ptr<XMLObject> xmlobj(XMLObjectBuilder::buildOneFromElement(doc->getDocumentElement(), true));
         docjan.release();
-        entity = dynamic_cast<EntityDescriptor*>(xmlobj.get());
+        entity.reset(dynamic_cast<EntityDescriptor*>(xmlobj.get()));
+        xmlobj.release();
         if (!entity)
             throw ConfigurationException("Template file ($1) did not contain an EntityDescriptor", params(1, templ.c_str()));
-        xmlobj.release();
     }
     else {
-        entity = EntityDescriptorBuilder::buildEntityDescriptor();
+        entity.reset(EntityDescriptorBuilder::buildEntityDescriptor());
+    }
+
+    // We always have extensions for algorithm support.
+    if (!entity->getExtensions()) {
+        entity->setExtensions(ExtensionsBuilder::buildExtensions());
+        entity->getExtensions()->addNamespace(Namespace(samlconstants::SAML20MD_ALGSUPPORT_NS, samlconstants::SAML20MD_ALGSUPPORT_PREFIX));
     }
 
     if (!entity->getID()) {
@@ -383,7 +472,6 @@ pair<bool,long> MetadataGenerator::processMessage(
         entity->setID(widenit.get());
     }
 
-    auto_ptr<EntityDescriptor> wrapper(entity);
     pair<bool,unsigned int> cache = getUnsignedInt("cacheDuration");
     if (cache.first) {
         entity->setCacheDuration(cache.second);
@@ -396,12 +484,10 @@ pair<bool,long> MetadataGenerator::processMessage(
     if (m_org && !entity->getOrganization())
         entity->setOrganization(m_org->cloneOrganization());
 
-    for (vector<ContactPerson*>::const_iterator cp = m_contacts.begin(); cp != m_contacts.end(); ++cp)
-        entity->getContactPersons().push_back((*cp)->cloneContactPerson());
+    for (ptr_vector<ContactPerson>::const_iterator cp = m_contacts.begin(); cp != m_contacts.end(); ++cp)
+        entity->getContactPersons().push_back(cp->cloneContactPerson());
 
     if (m_entityAttrs) {
-        if (!entity->getExtensions())
-            entity->setExtensions(ExtensionsBuilder::buildExtensions());
         entity->getExtensions()->getUnknownXMLObjects().push_back(m_entityAttrs->cloneEntityAttributes());
     }
 
@@ -414,8 +500,8 @@ pair<bool,long> MetadataGenerator::processMessage(
         role = entity->getSPSSODescriptors().front();
     }
 
-    for (vector<NameIDFormat*>::const_iterator nif = m_formats.begin(); nif != m_formats.end(); ++nif)
-        role->getNameIDFormats().push_back((*nif)->cloneNameIDFormat());
+    for (ptr_vector<NameIDFormat>::const_iterator nif = m_formats.begin(); nif != m_formats.end(); ++nif)
+        role->getNameIDFormats().push_back(nif->cloneNameIDFormat());
 
     if (m_uiinfo) {
         if (!role->getExtensions())
@@ -423,14 +509,22 @@ pair<bool,long> MetadataGenerator::processMessage(
         role->getExtensions()->getUnknownXMLObjects().push_back(m_uiinfo->cloneUIInfo());
     }
 
-    for (vector<AttributeConsumingService*>::const_iterator acs = m_attrConsumers.begin(); acs != m_attrConsumers.end(); ++acs)
-        role->getAttributeConsumingServices().push_back((*acs)->cloneAttributeConsumingService());
+    if (!m_digests.empty() || !m_signings.empty()) {
+        for (ptr_vector<DigestMethod>::const_iterator dm = m_digests.begin(); dm != m_digests.end(); ++dm)
+            entity->getExtensions()->getUnknownXMLObjects().push_back(dm->cloneDigestMethod());
+        for (ptr_vector<SigningMethod>::const_iterator sm = m_signings.begin(); sm != m_signings.end(); ++sm)
+            entity->getExtensions()->getUnknownXMLObjects().push_back(sm->cloneSigningMethod());
+    }
+
+    for (ptr_vector<AttributeConsumingService>::const_iterator acs = m_attrConsumers.begin(); acs != m_attrConsumers.end(); ++acs)
+        role->getAttributeConsumingServices().push_back(acs->cloneAttributeConsumingService());
 
     if (!m_reqAttrs.empty()) {
         int index = 1;
         const vector<AttributeConsumingService*>& svcs = const_cast<const SPSSODescriptor*>(role)->getAttributeConsumingServices();
-        for (vector<AttributeConsumingService*>::const_iterator s =svcs.begin(); s != svcs.end(); ++s) {
-            pair<bool,int> i = (*s)->getIndex();
+        for (indirect_iterator<vector<AttributeConsumingService*>::const_iterator> s = make_indirect_iterator(svcs.begin());
+                s != make_indirect_iterator(svcs.end()); ++s) {
+            pair<bool,int> i = s->getIndex();
             if (i.first && index == i.second)
                 index = i.second + 1;
         }
@@ -442,8 +536,8 @@ pair<bool,long> MetadataGenerator::processMessage(
         sn->setName(entity->getEntityID());
         static const XMLCh english[] = UNICODE_LITERAL_2(e,n);
         sn->setLang(english);
-        for (vector<RequestedAttribute*>::const_iterator req = m_reqAttrs.begin(); req != m_reqAttrs.end(); ++req)
-            svc->getRequestedAttributes().push_back((*req)->cloneRequestedAttribute());
+        for (ptr_vector<RequestedAttribute>::const_iterator req = m_reqAttrs.begin(); req != m_reqAttrs.end(); ++req)
+            svc->getRequestedAttributes().push_back(req->cloneRequestedAttribute());
     }
 
     // Policy flags.
@@ -457,30 +551,31 @@ pair<bool,long> MetadataGenerator::processMessage(
     // Ask each handler to generate itself.
     vector<const Handler*> handlers;
     application.getHandlers(handlers);
-    for (vector<const Handler*>::const_iterator h = handlers.begin(); h != handlers.end(); ++h) {
+    for (indirect_iterator<vector<const Handler*>::const_iterator> h = make_indirect_iterator(handlers.begin());
+            h != make_indirect_iterator(handlers.end()); ++h) {
         if (m_bases.empty()) {
             if (strncmp(handlerURL, "https", 5) == 0) {
                 if (m_https >= 0)
-                    (*h)->generateMetadata(*role, handlerURL);
+                    h->generateMetadata(*role, handlerURL);
                 if (m_http == 1) {
                     string temp(handlerURL);
                     temp.erase(4, 1);
-                    (*h)->generateMetadata(*role, temp.c_str());
+                    h->generateMetadata(*role, temp.c_str());
                 }
             }
             else {
                 if (m_http >= 0)
-                    (*h)->generateMetadata(*role, handlerURL);
+                    h->generateMetadata(*role, handlerURL);
                 if (m_https == 1) {
                     string temp(handlerURL);
                     temp.insert(temp.begin() + 4, 's');
-                    (*h)->generateMetadata(*role, temp.c_str());
+                    h->generateMetadata(*role, temp.c_str());
                 }
             }
         }
         else {
             for (vector<string>::const_iterator b = m_bases.begin(); b != m_bases.end(); ++b)
-                (*h)->generateMetadata(*role, b->c_str());
+                h->generateMetadata(*role, b->c_str());
         }
     }
 
@@ -490,7 +585,7 @@ pair<bool,long> MetadataGenerator::processMessage(
         extractor->generateMetadata(*role);
     }
 
-    CredentialResolver* credResolver=application.getCredentialResolver();
+    CredentialResolver* credResolver = application.getCredentialResolver();
     if (credResolver) {
         Locker credLocker(credResolver);
         CredentialCriteria cc;
@@ -517,6 +612,10 @@ pair<bool,long> MetadataGenerator::processMessage(
                     }
                 }
                 kd->setUse(use);
+                if (!use) {
+                    for (ptr_vector<EncryptionMethod>::const_iterator em = m_encryptions.begin(); em != m_encryptions.end(); ++em)
+                        kd->getEncryptionMethods().push_back(em->cloneEncryptionMethod());
+                }
                 role->getKeyDescriptors().push_back(kd);
             }
         }
@@ -527,6 +626,8 @@ pair<bool,long> MetadataGenerator::processMessage(
                 KeyDescriptor* kd = KeyDescriptorBuilder::buildKeyDescriptor();
                 kd->setUse(KeyDescriptor::KEYTYPE_ENCRYPTION);
                 kd->setKeyInfo(kinfo);
+                for (ptr_vector<EncryptionMethod>::const_iterator em = m_encryptions.begin(); em != m_encryptions.end(); ++em)
+                    kd->getEncryptionMethods().push_back(em->cloneEncryptionMethod());
                 role->getKeyDescriptors().push_back(kd);
             }
         }
@@ -558,7 +659,7 @@ pair<bool,long> MetadataGenerator::processMessage(
             stringstream pretty;
             XMLHelper::serialize(entity->marshall(), pretty, true);
             DOMDocument* prettydoc = XMLToolingConfig::getConfig().getParser().parse(pretty);
-            auto_ptr<XMLObject> prettyentity(XMLObjectBuilder::buildOneFromElement(prettydoc->getDocumentElement(), true));
+            scoped_ptr<XMLObject> prettyentity(XMLObjectBuilder::buildOneFromElement(prettydoc->getDocumentElement(), true));
 
             Signature* sig = SignatureBuilder::buildSignature();
             dynamic_cast<EntityDescriptor*>(prettyentity.get())->setSignature(sig);
@@ -588,6 +689,6 @@ pair<bool,long> MetadataGenerator::processMessage(
     httpResponse.setContentType(prop.first ? prop.second : "application/samlmetadata+xml");
     return make_pair(true, httpResponse.sendResponse(s));
 #else
-    return make_pair(false,0L);
+    return make_pair(false, 0L);
 #endif
 }

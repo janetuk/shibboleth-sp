@@ -30,6 +30,7 @@
 #include "ServiceProvider.h"
 #include "SPRequest.h"
 #include "handler/AssertionConsumerService.h"
+#include "util/CGIParser.h"
 #include "util/SPConstants.h"
 
 # include <ctime>
@@ -43,6 +44,7 @@
 # include "metadata/MetadataProviderCriteria.h"
 # include "security/SecurityPolicy.h"
 # include "security/SecurityPolicyProvider.h"
+# include <boost/iterator/indirect_iterator.hpp>
 # include <saml/exceptions.h>
 # include <saml/SAMLConfig.h>
 # include <saml/saml1/core/Assertions.h>
@@ -60,18 +62,19 @@ using opensaml::saml2md::SPSSODescriptor;
 # include "lite/CommonDomainCookie.h"
 #endif
 
+#include <xmltooling/XMLToolingConfig.h>
+#include <xmltooling/util/URLEncoder.h>
+
 using namespace shibspconstants;
 using namespace shibsp;
 using namespace opensaml;
 using namespace xmltooling;
+using namespace boost;
 using namespace std;
 
 AssertionConsumerService::AssertionConsumerService(
     const DOMElement* e, const char* appId, Category& log, DOMNodeFilter* filter, const map<string,string>* remapper
     ) : AbstractHandler(e, log, filter, remapper)
-#ifndef SHIBSP_LITE
-        ,m_decoder(nullptr), m_role(samlconstants::SAML20MD_NS, opensaml::saml2md::IDPSSODescriptor::LOCAL_NAME)
-#endif
 {
     if (!e)
         return;
@@ -80,8 +83,10 @@ AssertionConsumerService::AssertionConsumerService(
     setAddress(address.c_str());
 #ifndef SHIBSP_LITE
     if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
-        m_decoder = SAMLConfig::getConfig().MessageDecoderManager.newPlugin(
-            getString("Binding").second, pair<const DOMElement*,const XMLCh*>(e,shibspconstants::SHIB2SPCONFIG_NS)
+        m_decoder.reset(
+            SAMLConfig::getConfig().MessageDecoderManager.newPlugin(
+                getString("Binding").second, pair<const DOMElement*,const XMLCh*>(e,shibspconstants::SHIB2SPCONFIG_NS)
+                )
             );
         m_decoder->setArtifactResolver(SPConfig::getConfig().getArtifactResolver());
     }
@@ -90,17 +95,25 @@ AssertionConsumerService::AssertionConsumerService(
 
 AssertionConsumerService::~AssertionConsumerService()
 {
-#ifndef SHIBSP_LITE
-    delete m_decoder;
-#endif
 }
 
 pair<bool,long> AssertionConsumerService::run(SPRequest& request, bool isHandler) const
 {
-    string relayState;
-    SPConfig& conf = SPConfig::getConfig();
+    // Check for a message back to the ACS from a post-session hook.
+    if (request.getQueryString() && strstr(request.getQueryString(), "hook=1")) {
+        // Parse the query string only to preserve any POST data.
+        CGIParser cgi(request, true);
+        pair<CGIParser::walker,CGIParser::walker> param = cgi.getParameters("hook");
+        if (param.first != param.second && param.first->second && !strcmp(param.first->second, "1")) {
+            string target;
+            param = cgi.getParameters("target");
+            if (param.first != param.second && param.first->second)
+                target = param.first->second;
+            return finalizeResponse(request.getApplication(), request, request, target);
+        }
+    }
 
-    if (conf.isEnabled(SPConfig::OutOfProcess)) {
+    if (SPConfig::getConfig().isEnabled(SPConfig::OutOfProcess)) {
         // When out of process, we run natively and directly process the message.
         return processMessage(request.getApplication(), request, request);
     }
@@ -108,9 +121,10 @@ pair<bool,long> AssertionConsumerService::run(SPRequest& request, bool isHandler
         // When not out of process, we remote all the message processing.
         vector<string> headers(1, "Cookie");
         headers.push_back("User-Agent");
+        headers.push_back("Accept-Language");
         DDF out,in = wrap(request, &headers);
         DDFJanitor jin(in), jout(out);
-        out=request.getServiceProvider().getListenerService()->send(in);
+        out = request.getServiceProvider().getListenerService()->send(in);
         return unwrap(request, out);
     }
 }
@@ -118,8 +132,8 @@ pair<bool,long> AssertionConsumerService::run(SPRequest& request, bool isHandler
 void AssertionConsumerService::receive(DDF& in, ostream& out)
 {
     // Find application.
-    const char* aid=in["application_id"].string();
-    const Application* app=aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
+    const char* aid = in["application_id"].string();
+    const Application* app = aid ? SPConfig::getConfig().getServiceProvider()->getApplication(aid) : nullptr;
     if (!app) {
         // Something's horribly wrong.
         m_log.error("couldn't find application (%s) for new session", aid ? aid : "(missing)");
@@ -127,17 +141,17 @@ void AssertionConsumerService::receive(DDF& in, ostream& out)
     }
 
     // Unpack the request.
-    auto_ptr<HTTPRequest> req(getRequest(in));
+    scoped_ptr<HTTPRequest> req(getRequest(in));
 
     // Wrap a response shim.
     DDF ret(nullptr);
     DDFJanitor jout(ret);
-    auto_ptr<HTTPResponse> resp(getResponse(ret));
+    scoped_ptr<HTTPResponse> resp(getResponse(ret));
 
     // Since we're remoted, the result should either be a throw, a false/0 return,
     // which we just return as an empty structure, or a response/redirect,
     // which we capture in the facade and send back.
-    processMessage(*app, *req.get(), *resp.get());
+    processMessage(*app, *req, *resp);
     out << ret;
 }
 
@@ -147,68 +161,93 @@ pair<bool,long> AssertionConsumerService::processMessage(
 {
 #ifndef SHIBSP_LITE
     // Locate policy key.
-    pair<bool,const char*> policyId = getString("policyId", m_configNS.get());  // namespace-qualified if inside handler element
-    if (!policyId.first)
-        policyId = application.getString("policyId");   // unqualified in Application(s) element
+    pair<bool,const char*> prop = getString("policyId", m_configNS.get());  // namespace-qualified if inside handler element
+    if (!prop.first)
+        prop = application.getString("policyId");   // unqualified in Application(s) element
 
     // Lock metadata for use by policy.
     Locker metadataLocker(application.getMetadataProvider());
 
     // Create the policy.
-    auto_ptr<opensaml::SecurityPolicy> policy(
-        application.getServiceProvider().getSecurityPolicyProvider()->createSecurityPolicy(application, &m_role, policyId.second)
+    scoped_ptr<opensaml::SecurityPolicy> policy(
+        application.getServiceProvider().getSecurityPolicyProvider()->createSecurityPolicy(
+            application, &IDPSSODescriptor::ELEMENT_QNAME, prop.second
+            )
         );
 
     string relayState;
-    bool relayStateOK = true;
-    auto_ptr<XMLObject> msg(nullptr);
+    scoped_ptr<XMLObject> msg;
     try {
         // Decode the message and process it in a protocol-specific way.
-        auto_ptr<XMLObject> msg2(m_decoder->decode(relayState, httpRequest, *(policy.get())));
-        if (!msg2.get())
+        msg.reset(m_decoder->decode(relayState, httpRequest, *(policy.get())));
+        if (!msg)
             throw BindingException("Failed to decode an SSO protocol response.");
-        msg = msg2; // save off to allow access from within exception handler.
-        DDF postData = recoverPostData(application, httpRequest, httpResponse, relayState.c_str());
-        DDFJanitor postjan(postData);
-        recoverRelayState(application, httpRequest, httpResponse, relayState);
-        limitRelayState(m_log, application, httpRequest, relayState.c_str());
-        implementProtocol(application, httpRequest, httpResponse, *(policy.get()), NULL, *msg.get());
-
-        auto_ptr_char issuer(policy->getIssuer() ? policy->getIssuer()->getName() : nullptr);
+        implementProtocol(application, httpRequest, httpResponse, *policy, nullptr, *msg);
 
         // History cookie.
+        auto_ptr_char issuer(policy->getIssuer() ? policy->getIssuer()->getName() : nullptr);
         if (issuer.get() && *issuer.get())
             maintainHistory(application, httpRequest, httpResponse, issuer.get());
 
-        // Now redirect to the state value. By now, it should be set to *something* usable.
-        // First check for POST data.
-        if (!postData.islist()) {
-            m_log.debug("ACS returning via redirect to: %s", relayState.c_str());
-            return make_pair(true, httpResponse.sendRedirect(relayState.c_str()));
-        }
-        else {
-            m_log.debug("ACS returning via POST to: %s", relayState.c_str());
-            return make_pair(true, sendPostResponse(application, httpResponse, relayState.c_str(), postData));
-        }
-    }
-    catch (XMLToolingException& ex) {
-        if (relayStateOK) {
-            // Check for isPassive error condition.
-            const char* sc2 = ex.getProperty("statusCode2");
-            if (sc2 && !strcmp(sc2, "urn:oasis:names:tc:SAML:2.0:status:NoPassive")) {
-                pair<bool,bool> ignore = getBool("ignoreNoPassive", m_configNS.get());  // namespace-qualified if inside handler element
-                if (ignore.first && ignore.second && !relayState.empty()) {
-                    m_log.debug("ignoring SAML status of NoPassive and redirecting to resource...");
-                    return make_pair(true, httpResponse.sendRedirect(relayState.c_str()));
+        const EntityDescriptor* entity =
+            dynamic_cast<const EntityDescriptor*>(policy->getIssuerMetadata() ? policy->getIssuerMetadata()->getParent() : nullptr);
+        prop = application.getRelyingParty(entity)->getString("sessionHook");
+        if (prop.first) {
+            string hook(prop.second);
+            httpRequest.absolutize(hook);
+
+            // Compute the return URL. We use a self-referential link plus a hook indicator to break the cycle
+            // and the relay state.
+            const URLEncoder* encoder = XMLToolingConfig::getConfig().getURLEncoder();
+            string returnURL = httpRequest.getRequestURL();
+            returnURL = returnURL.substr(0, returnURL.find('?')) + "?hook=1";
+            if (!relayState.empty())
+                returnURL += "&target=" + encoder->encode(relayState.c_str());
+            if (hook.find('?') == string::npos)
+                hook += '?';
+            else
+                hook += '&';
+            hook += "return=" + encoder->encode(returnURL.c_str());
+
+            // Add the translated target resource in case it's of interest.
+            if (!relayState.empty()) {
+                try {
+                    recoverRelayState(application, httpRequest, httpResponse, relayState, false);
+                    hook += "&target=" + encoder->encode(relayState.c_str());
+                }
+                catch (std::exception& ex) {
+                    m_log.warn("error recovering relay state: %s", ex.what());
                 }
             }
+
+            return make_pair(true, httpResponse.sendRedirect(hook.c_str()));
         }
-        if (!relayState.empty())
+
+        return finalizeResponse(application, httpRequest, httpResponse, relayState);
+    }
+    catch (XMLToolingException& ex) {
+        // Check for isPassive error condition.
+        const char* sc2 = ex.getProperty("statusCode2");
+        if (sc2 && !strcmp(sc2, "urn:oasis:names:tc:SAML:2.0:status:NoPassive")) {
+            pair<bool,bool> ignore = getBool("ignoreNoPassive", m_configNS.get());  // namespace-qualified if inside handler element
+            if (ignore.first && ignore.second && !relayState.empty()) {
+                m_log.debug("ignoring SAML status of NoPassive and redirecting to resource...");
+                return make_pair(true, httpResponse.sendRedirect(relayState.c_str()));
+            }
+        }
+        if (!relayState.empty()) {
+            try {
+                recoverRelayState(application, httpRequest, httpResponse, relayState, false);
+            }
+            catch (std::exception& rsex) {
+                m_log.warn("error recovering relay state: %s", rsex.what());
+            }
             ex.addProperty("RelayState", relayState.c_str());
+        }
 
         // Log the error.
         try {
-            auto_ptr<TransactionLog::Event> event(SPConfig::getConfig().EventManager.newPlugin(LOGIN_EVENT, nullptr));
+            scoped_ptr<TransactionLog::Event> event(SPConfig::getConfig().EventManager.newPlugin(LOGIN_EVENT, nullptr));
             LoginEvent* error_event = dynamic_cast<LoginEvent*>(event.get());
             if (error_event) {
                 error_event->m_exception = &ex;
@@ -228,8 +267,13 @@ pair<bool,long> AssertionConsumerService::processMessage(
                 m_log.warn("unable to audit event, log event object was of an incorrect type");
             }
         }
-        catch (exception& ex) {
-            m_log.warn("exception auditing event: %s", ex.what());
+        catch (std::exception& ex2) {
+            m_log.warn("exception auditing event: %s", ex2.what());
+        }
+
+        // If no sign of annotation, try to annotate it now.
+        if (!ex.getProperty("statusCode")) {
+            annotateException(&ex, policy->getIssuerMetadata(), nullptr, false);    // wait to throw it
         }
 
         throw;
@@ -239,15 +283,36 @@ pair<bool,long> AssertionConsumerService::processMessage(
 #endif
 }
 
+pair<bool,long> AssertionConsumerService::finalizeResponse(
+    const Application& application, const HTTPRequest& httpRequest, HTTPResponse& httpResponse, string& relayState
+    ) const
+{
+    DDF postData = recoverPostData(application, httpRequest, httpResponse, relayState.c_str());
+    DDFJanitor postjan(postData);
+    recoverRelayState(application, httpRequest, httpResponse, relayState);
+    application.limitRedirect(httpRequest, relayState.c_str());
+
+    // Now redirect to the state value. By now, it should be set to *something* usable.
+    // First check for POST data.
+    if (!postData.islist()) {
+        m_log.debug("ACS returning via redirect to: %s", relayState.c_str());
+        return make_pair(true, httpResponse.sendRedirect(relayState.c_str()));
+    }
+    else {
+        m_log.debug("ACS returning via POST to: %s", relayState.c_str());
+        return make_pair(true, sendPostResponse(application, httpResponse, relayState.c_str(), postData));
+    }
+}
+
 void AssertionConsumerService::checkAddress(const Application& application, const HTTPRequest& httpRequest, const char* issuedTo) const
 {
     if (!issuedTo || !*issuedTo)
         return;
 
-    const PropertySet* props=application.getPropertySet("Sessions");
+    const PropertySet* props = application.getPropertySet("Sessions");
     pair<bool,bool> checkAddress = props ? props->getBool("checkAddress") : make_pair(false,true);
     if (!checkAddress.first)
-        checkAddress.second=true;
+        checkAddress.second = true;
 
     if (checkAddress.second) {
         m_log.debug("checking client address");
@@ -256,7 +321,7 @@ void AssertionConsumerService::checkAddress(const Application& application, cons
                "Your client's current address ($client_addr) differs from the one used when you authenticated "
                 "to your identity provider. To correct this problem, you may need to bypass a proxy server. "
                 "Please contact your local support staff or help desk for assistance.",
-                namedparams(1,"client_addr",httpRequest.getRemoteAddr().c_str())
+                namedparams(1, "client_addr", httpRequest.getRemoteAddr().c_str())
                 );
         }
     }
@@ -311,26 +376,28 @@ opensaml::SecurityPolicy* AssertionConsumerService::createSecurityPolicy(
     return new SecurityPolicy(application, role, validate, policyId);
 }
 
-class SHIBSP_DLLLOCAL DummyContext : public ResolutionContext
-{
-public:
-    DummyContext(const vector<Attribute*>& attributes) : m_attributes(attributes) {
-    }
+namespace {
+    class SHIBSP_DLLLOCAL DummyContext : public ResolutionContext
+    {
+    public:
+        DummyContext(const vector<Attribute*>& attributes) : m_attributes(attributes) {
+        }
 
-    virtual ~DummyContext() {
-        for_each(m_attributes.begin(), m_attributes.end(), xmltooling::cleanup<Attribute>());
-    }
+        virtual ~DummyContext() {
+            for_each(m_attributes.begin(), m_attributes.end(), xmltooling::cleanup<Attribute>());
+        }
 
-    vector<Attribute*>& getResolvedAttributes() {
-        return m_attributes;
-    }
-    vector<Assertion*>& getResolvedAssertions() {
-        return m_tokens;
-    }
+        vector<Attribute*>& getResolvedAttributes() {
+            return m_attributes;
+        }
+        vector<Assertion*>& getResolvedAssertions() {
+            return m_tokens;
+        }
 
-private:
-    vector<Attribute*> m_attributes;
-    static vector<Assertion*> m_tokens; // never any tokens, so just share an empty vector
+    private:
+        vector<Attribute*> m_attributes;
+        static vector<Assertion*> m_tokens; // never any tokens, so just share an empty vector
+    };
 };
 
 vector<Assertion*> DummyContext::m_tokens;
@@ -348,8 +415,10 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
 {
     return resolveAttributes(
         application,
+        nullptr,
         issuer,
         protocol,
+        nullptr,
         v1nameid,
         nullptr,
         nameid,
@@ -362,8 +431,10 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
 
 ResolutionContext* AssertionConsumerService::resolveAttributes(
     const Application& application,
-    const saml2md::RoleDescriptor* issuer,
+    const GenericRequest* request,
+    const RoleDescriptor* issuer,
     const XMLCh* protocol,
+    const xmltooling::XMLObject* protmsg,
     const saml1::NameIdentifier* v1nameid,
     const saml1::AuthenticationStatement* v1statement,
     const saml2::NameID* nameid,
@@ -384,14 +455,15 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
                 m_log.debug("extracting metadata-derived attributes...");
                 try {
                     // We pass nullptr for "issuer" because the IdP isn't the one asserting metadata-based attributes.
-                    extractor->extractAttributes(application, nullptr, *issuer, resolvedAttributes);
-                    for (vector<Attribute*>::iterator a = resolvedAttributes.begin(); a != resolvedAttributes.end(); ++a) {
-                        vector<string>& ids = (*a)->getAliases();
+                    extractor->extractAttributes(application, request, nullptr, *issuer, resolvedAttributes);
+                    for (indirect_iterator<vector<Attribute*>::iterator> a = make_indirect_iterator(resolvedAttributes.begin());
+                            a != make_indirect_iterator(resolvedAttributes.end()); ++a) {
+                        vector<string>& ids = a->getAliases();
                         for (vector<string>::iterator id = ids.begin(); id != ids.end(); ++id)
                             *id = mprefix.second + *id;
                     }
                 }
-                catch (exception& ex) {
+                catch (std::exception& ex) {
                     m_log.error("caught exception extracting attributes: %s", ex.what());
                 }
             }
@@ -399,14 +471,23 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
 
         m_log.debug("extracting pushed attributes...");
 
+        if (protmsg) {
+            try {
+                extractor->extractAttributes(application, request, issuer, *protmsg, resolvedAttributes);
+            }
+            catch (std::exception& ex) {
+                m_log.error("caught exception extracting attributes: %s", ex.what());
+            }
+        }
+
         if (v1nameid || nameid) {
             try {
                 if (v1nameid)
-                    extractor->extractAttributes(application, issuer, *v1nameid, resolvedAttributes);
+                    extractor->extractAttributes(application, request, issuer, *v1nameid, resolvedAttributes);
                 else
-                    extractor->extractAttributes(application, issuer, *nameid, resolvedAttributes);
+                    extractor->extractAttributes(application, request, issuer, *nameid, resolvedAttributes);
             }
-            catch (exception& ex) {
+            catch (std::exception& ex) {
                 m_log.error("caught exception extracting attributes: %s", ex.what());
             }
         }
@@ -414,21 +495,22 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
         if (v1statement || statement) {
             try {
                 if (v1statement)
-                    extractor->extractAttributes(application, issuer, *v1statement, resolvedAttributes);
+                    extractor->extractAttributes(application, request, issuer, *v1statement, resolvedAttributes);
                 else
-                    extractor->extractAttributes(application, issuer, *statement, resolvedAttributes);
+                    extractor->extractAttributes(application, request, issuer, *statement, resolvedAttributes);
             }
-            catch (exception& ex) {
+            catch (std::exception& ex) {
                 m_log.error("caught exception extracting attributes: %s", ex.what());
             }
         }
 
         if (tokens) {
-            for (vector<const Assertion*>::const_iterator t = tokens->begin(); t!=tokens->end(); ++t) {
+            for (indirect_iterator<vector<const Assertion*>::const_iterator> t = make_indirect_iterator(tokens->begin());
+                    t != make_indirect_iterator(tokens->end()); ++t) {
                 try {
-                    extractor->extractAttributes(application, issuer, *(*t), resolvedAttributes);
+                    extractor->extractAttributes(application, request, issuer, *t, resolvedAttributes);
                 }
-                catch (exception& ex) {
+                catch (std::exception& ex) {
                     m_log.error("caught exception extracting attributes: %s", ex.what());
                 }
             }
@@ -436,12 +518,12 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
 
         AttributeFilter* filter = application.getAttributeFilter();
         if (filter && !resolvedAttributes.empty()) {
-            BasicFilteringContext fc(application, resolvedAttributes, issuer, authncontext_class);
+            BasicFilteringContext fc(application, resolvedAttributes, issuer, authncontext_class, authncontext_decl);
             Locker filtlocker(filter);
             try {
                 filter->filterAttributes(fc, resolvedAttributes);
             }
-            catch (exception& ex) {
+            catch (std::exception& ex) {
                 m_log.error("caught exception filtering attributes: %s", ex.what());
                 m_log.error("dumping extracted attributes due to filtering exception");
                 for_each(resolvedAttributes.begin(), resolvedAttributes.end(), xmltooling::cleanup<shibsp::Attribute>());
@@ -462,6 +544,7 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
             auto_ptr<ResolutionContext> ctx(
                 resolver->createResolutionContext(
                     application,
+                    request,
                     issuer ? dynamic_cast<const saml2md::EntityDescriptor*>(issuer->getParent()) : nullptr,
                     protocol,
                     nameid,
@@ -471,19 +554,27 @@ ResolutionContext* AssertionConsumerService::resolveAttributes(
                     &resolvedAttributes
                     )
                 );
-            resolver->resolveAttributes(*ctx.get());
+            resolver->resolveAttributes(*ctx);
             // Copy over any pushed attributes.
-            if (!resolvedAttributes.empty())
-                ctx->getResolvedAttributes().insert(ctx->getResolvedAttributes().end(), resolvedAttributes.begin(), resolvedAttributes.end());
+            while (!resolvedAttributes.empty()) {
+                ctx->getResolvedAttributes().push_back(resolvedAttributes.back());
+                resolvedAttributes.pop_back();
+            }
             return ctx.release();
         }
     }
-    catch (exception& ex) {
+    catch (std::exception& ex) {
         m_log.error("attribute resolution failed: %s", ex.what());
     }
 
-    if (!resolvedAttributes.empty())
-        return new DummyContext(resolvedAttributes);
+    if (!resolvedAttributes.empty()) {
+        try {
+            return new DummyContext(resolvedAttributes);
+        }
+        catch (bad_alloc&) {
+            for_each(resolvedAttributes.begin(), resolvedAttributes.end(), xmltooling::cleanup<shibsp::Attribute>());
+        }
+    }
     return nullptr;
 }
 
@@ -532,7 +623,7 @@ void AssertionConsumerService::extractMessageDetails(const Assertion& assertion,
     }
 }
 
-LoginEvent* AssertionConsumerService::newLoginEvent(const Application& application, const xmltooling::HTTPRequest& request) const
+LoginEvent* AssertionConsumerService::newLoginEvent(const Application& application, const HTTPRequest& request) const
 {
     if (!SPConfig::getConfig().isEnabled(SPConfig::Logging))
         return nullptr;
@@ -550,7 +641,7 @@ LoginEvent* AssertionConsumerService::newLoginEvent(const Application& applicati
             m_log.warn("unable to audit event, log event object was of an incorrect type");
         }
     }
-    catch (exception& ex) {
+    catch (std::exception& ex) {
         m_log.warn("exception auditing event: %s", ex.what());
     }
     return nullptr;
@@ -563,36 +654,39 @@ void AssertionConsumerService::maintainHistory(
     ) const
 {
     static const char* defProps="; path=/";
+    static const char* sslProps="; path=/; secure";
 
-    const PropertySet* sessionProps=application.getPropertySet("Sessions");
-    pair<bool,bool> idpHistory=sessionProps->getBool("idpHistory");
+    const PropertySet* sessionProps = application.getPropertySet("Sessions");
+    pair<bool,bool> idpHistory = sessionProps->getBool("idpHistory");
 
     if (idpHistory.first && idpHistory.second) {
-        pair<bool,const char*> cookieProps=sessionProps->getString("idpHistoryProps");
+        pair<bool,const char*> cookieProps = sessionProps->getString("idpHistoryProps");
         if (!cookieProps.first)
-            cookieProps=sessionProps->getString("cookieProps");
-        if (!cookieProps.first)
-            cookieProps.second=defProps;
+            cookieProps = sessionProps->getString("cookieProps");
+        if (!cookieProps.first || !strcmp(cookieProps.second, "http"))
+            cookieProps.second = defProps;
+        else if (!strcmp(cookieProps.second, "https"))
+            cookieProps.second = sslProps;
 
         // Set an IdP history cookie locally (essentially just a CDC).
         CommonDomainCookie cdc(request.getCookie(CommonDomainCookie::CDCName));
 
         // Either leave in memory or set an expiration.
-        pair<bool,unsigned int> days=sessionProps->getUnsignedInt("idpHistoryDays");
-        if (!days.first || days.second==0) {
+        pair<bool,unsigned int> days = sessionProps->getUnsignedInt("idpHistoryDays");
+        if (!days.first || days.second == 0) {
             string c = string(cdc.set(entityID)) + cookieProps.second;
             response.setCookie(CommonDomainCookie::CDCName, c.c_str());
         }
         else {
-            time_t now=time(nullptr) + (days.second * 24 * 60 * 60);
+            time_t now = time(nullptr) + (days.second * 24 * 60 * 60);
 #ifdef HAVE_GMTIME_R
             struct tm res;
-            struct tm* ptime=gmtime_r(&now,&res);
+            struct tm* ptime = gmtime_r(&now,&res);
 #else
-            struct tm* ptime=gmtime(&now);
+            struct tm* ptime = gmtime(&now);
 #endif
             char timebuf[64];
-            strftime(timebuf,64,"%a, %d %b %Y %H:%M:%S GMT",ptime);
+            strftime(timebuf,64,"%a, %d %b %Y %H:%M:%S GMT", ptime);
             string c = string(cdc.set(entityID)) + cookieProps.second + "; expires=" + timebuf;
             response.setCookie(CommonDomainCookie::CDCName, c.c_str());
         }

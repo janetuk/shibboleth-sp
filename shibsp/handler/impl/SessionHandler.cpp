@@ -31,8 +31,7 @@
 #include "SessionCache.h"
 #include "SPRequest.h"
 #include "attribute/Attribute.h"
-#include "handler/AbstractHandler.h"
-#include "util/IPRange.h"
+#include "handler/SecuredHandler.h"
 
 #include <ctime>
 
@@ -47,22 +46,7 @@ namespace shibsp {
     #pragma warning( disable : 4250 )
 #endif
 
-    class SHIBSP_DLLLOCAL Blocker : public DOMNodeFilter
-    {
-    public:
-#ifdef SHIBSP_XERCESC_SHORT_ACCEPTNODE
-        short
-#else
-        FilterAction
-#endif
-        acceptNode(const DOMNode* node) const {
-            return FILTER_REJECT;
-        }
-    };
-
-    static SHIBSP_DLLLOCAL Blocker g_Blocker;
-
-    class SHIBSP_API SessionHandler : public AbstractHandler
+    class SHIBSP_API SessionHandler : public SecuredHandler
     {
     public:
         SessionHandler(const DOMElement* e, const char* appId);
@@ -71,8 +55,11 @@ namespace shibsp {
         pair<bool,long> run(SPRequest& request, bool isHandler=true) const;
 
     private:
+        pair<bool,long> doHTML(SPRequest& request) const;
+        pair<bool,long> doJSON(SPRequest& request) const;
+
         bool m_values;
-        vector<IPRange> m_acl;
+        string m_contentType;
     };
 
 #if defined (_MSC_VER)
@@ -87,91 +74,225 @@ namespace shibsp {
 };
 
 SessionHandler::SessionHandler(const DOMElement* e, const char* appId)
-    : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionHandler"), &g_Blocker), m_values(false)
+    : SecuredHandler(e, Category::getInstance(SHIBSP_LOGCAT".SessionHandler")), m_values(false)
 {
-    pair<bool,const char*> acl = getString("acl");
-    if (acl.first) {
-        string aclbuf=acl.second;
-        int j = 0;
-        for (unsigned int i=0;  i < aclbuf.length();  ++i) {
-            if (aclbuf.at(i)==' ') {
-                try {
-                    m_acl.push_back(IPRange::parseCIDRBlock(aclbuf.substr(j, i-j).c_str()));
-                }
-                catch (exception& ex) {
-                    m_log.error("invalid CIDR block (%s): %s", aclbuf.substr(j, i-j).c_str(), ex.what());
-                }
-                j = i + 1;
-            }
-        }
-        try {
-            m_acl.push_back(IPRange::parseCIDRBlock(aclbuf.substr(j, aclbuf.length()-j).c_str()));
-        }
-        catch (exception& ex) {
-            m_log.error("invalid CIDR block (%s): %s", aclbuf.substr(j, aclbuf.length()-j).c_str(), ex.what());
-        }
-
-        if (m_acl.empty()) {
-            m_log.warn("invalid CIDR range(s) in Session handler acl property, allowing 127.0.0.1 as a fall back");
-            m_acl.push_back(IPRange::parseCIDRBlock("127.0.0.1"));
-        }
-    }
+    pair<bool,const char*> prop = getString("contentType");
+    if (prop.first)
+        m_contentType = prop.second;
+    if (!m_contentType.empty() && m_contentType != "application/json" && m_contentType != "text/html")
+        throw ConfigurationException("Unsupported contentType property in Session Handler configuration.");
 
     pair<bool,bool> flag = getBool("showAttributeValues");
     if (flag.first)
         m_values = flag.second;
 }
 
+namespace {
+    static ostream& json_safe(ostream& os, const char* buf)
+    {
+        os << '"';
+        for (; *buf; ++buf) {
+            switch (*buf) {
+                case '\\':
+                case '"':
+                    os << '\\';
+                    os << *buf;
+                    break;
+                case '\b':
+                    os << "\\b";
+                    break;
+                case '\t':
+                    os << "\\t";
+                    break;
+                case '\n':
+                    os << "\\n";
+                    break;
+                case '\f':
+                    os << "\\f";
+                    break;
+                case '\r':
+                    os << "\\r";
+                    break;
+                default:
+                    os << *buf;
+            }
+        }
+        os << '"';
+        return os;
+    }
+};
+
 pair<bool,long> SessionHandler::run(SPRequest& request, bool isHandler) const
 {
-    if (!m_acl.empty()) {
-        bool found = false;
-        for (vector<IPRange>::const_iterator acl = m_acl.begin(); !found && acl != m_acl.end(); ++acl) {
-            found = acl->contains(request.getRemoteAddr().c_str());
-        }
-        if (!found) {
-            m_log.error("session handler request blocked from invalid address (%s)", request.getRemoteAddr().c_str());
-            istringstream msg("Session Handler Blocked");
-            return make_pair(true,request.sendResponse(msg, HTTPResponse::XMLTOOLING_HTTP_STATUS_FORBIDDEN));
+    // Check ACL in base class.
+    pair<bool,long> ret = SecuredHandler::run(request, isHandler);
+    if (ret.first)
+        return ret;
+    request.setResponseHeader("Expires","Wed, 01 Jan 1997 12:00:00 GMT");
+    request.setResponseHeader("Cache-Control","private,no-store,no-cache,max-age=0");
+    if (m_contentType == "application/json") {
+        request.setContentType(m_contentType.c_str());
+        return doJSON(request);
+    }
+    request.setContentType("text/html; charset=UTF-8");
+    return doHTML(request);
+}
+
+pair<bool,long> SessionHandler::doJSON(SPRequest& request) const
+{
+    stringstream s;
+
+    Session* session = nullptr;
+    try {
+        session = request.getSession(); // caches the locked session in the request so it's unlocked automatically
+        if (!session) {
+            s << "{}" << endl;
+            return make_pair(true, request.sendResponse(s));
         }
     }
+    catch (std::exception& ex) {
+        m_log.info("exception accessing user session: %s", ex.what());
+        s << "{}" << endl;
+        return make_pair(true, request.sendError(s));
+    }
 
+    s << "{ ";
+    s << "\"expiration\": ";
+    if (session->getExpiration())
+        s << ((session->getExpiration() - time(nullptr)) / 60);
+    else
+        s << 0;
+
+    if (session->getClientAddress()) {
+        s << ", \"client_address\": ";
+        json_safe(s, session->getClientAddress());
+    }
+
+    if (session->getProtocol()) {
+        s << ", \"protocol\": ";
+        json_safe(s, session->getProtocol());
+    }
+
+    pair<bool,bool> stdvars = request.getRequestSettings().first->getBool("exportStdVars");
+    if (!stdvars.first || stdvars.second) {
+        if (session->getEntityID()) {
+            s << ", \"identity_provider\": ";
+            json_safe(s, session->getEntityID());
+        }
+
+        if (session->getAuthnInstant()) {
+            s << ", \"authn_instant\": ";
+            json_safe(s, session->getAuthnInstant());
+        }
+
+        if (session->getAuthnContextClassRef()) {
+            s << ", \"authncontext_class\": ";
+            json_safe(s, session->getAuthnContextClassRef());
+        }
+
+        if (session->getAuthnContextDeclRef()) {
+            s << ", \"authncontext_decl\": ";
+            json_safe(s, session->getAuthnContextDeclRef());
+        }
+
+    }
+
+    /*
+        attributes: [ { "name": "foo", "values" : count } ]
+
+        attributes: [
+            { "name": "foo", "values": [ "val", "val" ] }
+        ]
+    */
+
+    const multimap<string,const Attribute*>& attributes = session->getIndexedAttributes();
+    if (!attributes.empty()) {
+        s << ", \"attributes\": [ ";
+        string key;
+        vector<string>::size_type count=0;
+        for (multimap<string,const Attribute*>::const_iterator a = attributes.begin(); a != attributes.end(); ++a) {
+            if (a->first != key) {
+                // We're starting a new attribute.
+                if (a != attributes.begin()) {
+                    // Need to close out the previous.
+                    if (m_values) {
+                        s << " ] }, ";
+                    }
+                    else {
+                        s << ", \"values\": " << count << " }, ";
+                        count = 0;
+                    }
+                }
+                s << "{ \"name\": ";
+                json_safe(s, a->first.c_str());
+            }
+
+            if (m_values) {
+                const vector<string>& vals = a->second->getSerializedValues();
+                for (vector<string>::const_iterator v = vals.begin(); v!=vals.end(); ++v) {
+                    if (v != vals.begin() || a->first == key) {
+                        s << ", ";
+                    }
+                    else {
+                        s << ", \"values\": [ ";
+                    }
+                    json_safe(s, v->c_str());
+                }
+            }
+            else {
+                count += a->second->getSerializedValues().size();
+            }
+            key = a->first;
+        }
+
+        if (m_values)
+            s << " ] } ";
+        else
+            s << ", \"values\": " << count << " }";
+        s << " ]";
+    }
+
+    s << " }" << endl;
+    return make_pair(true, request.sendResponse(s));
+}
+
+pair<bool,long> SessionHandler::doHTML(SPRequest& request) const
+{
     stringstream s;
     s << "<html><head><title>Session Summary</title></head><body><pre>" << endl;
 
     Session* session = nullptr;
     try {
-        session = request.getSession();
+        session = request.getSession(); // caches the locked session in the request so it's unlocked automatically
         if (!session) {
             s << "A valid session was not found.</pre></body></html>" << endl;
-            request.setContentType("text/html");
-            request.setResponseHeader("Expires","Wed, 01 Jan 1997 12:00:00 GMT");
-            request.setResponseHeader("Cache-Control","private,no-store,no-cache,max-age=0");
             return make_pair(true, request.sendResponse(s));
         }
     }
-    catch (exception& ex) {
+    catch (std::exception& ex) {
         s << "Exception while retrieving active session:" << endl
             << '\t' << ex.what() << "</pre></body></html>" << endl;
-        request.setContentType("text/html");
-        request.setResponseHeader("Expires","Wed, 01 Jan 1997 12:00:00 GMT");
-        request.setResponseHeader("Cache-Control","private,no-store,no-cache,max-age=0");
         return make_pair(true, request.sendResponse(s));
     }
 
     s << "<u>Miscellaneous</u>" << endl;
 
-    s << "<strong>Client Address:</strong> " << (session->getClientAddress() ? session->getClientAddress() : "(none)") << endl;
-    s << "<strong>Identity Provider:</strong> " << (session->getEntityID() ? session->getEntityID() : "(none)") << endl;
-    s << "<strong>SSO Protocol:</strong> " << (session->getProtocol() ? session->getProtocol() : "(none)") << endl;
-    s << "<strong>Authentication Time:</strong> " << (session->getAuthnInstant() ? session->getAuthnInstant() : "(none)") << endl;
-    s << "<strong>Authentication Context Class:</strong> " << (session->getAuthnContextClassRef() ? session->getAuthnContextClassRef() : "(none)") << endl;
-    s << "<strong>Authentication Context Decl:</strong> " << (session->getAuthnContextDeclRef() ? session->getAuthnContextDeclRef() : "(none)") << endl;
     s << "<strong>Session Expiration (barring inactivity):</strong> ";
     if (session->getExpiration())
         s << ((session->getExpiration() - time(nullptr)) / 60) << " minute(s)" << endl;
     else
         s << "Infinite" << endl;
+
+    s << "<strong>Client Address:</strong> " << (session->getClientAddress() ? session->getClientAddress() : "(none)") << endl;
+    s << "<strong>SSO Protocol:</strong> " << (session->getProtocol() ? session->getProtocol() : "(none)") << endl;
+
+    pair<bool,bool> stdvars = request.getRequestSettings().first->getBool("exportStdVars");
+    if (!stdvars.first || stdvars.second) {
+        s << "<strong>Identity Provider:</strong> " << (session->getEntityID() ? session->getEntityID() : "(none)") << endl;
+        s << "<strong>Authentication Time:</strong> " << (session->getAuthnInstant() ? session->getAuthnInstant() : "(none)") << endl;
+        s << "<strong>Authentication Context Class:</strong> " << (session->getAuthnContextClassRef() ? session->getAuthnContextClassRef() : "(none)") << endl;
+        s << "<strong>Authentication Context Decl:</strong> " << (session->getAuthnContextDeclRef() ? session->getAuthnContextDeclRef() : "(none)") << endl;
+    }
 
     s << endl << "<u>Attributes</u>" << endl;
 
@@ -213,14 +334,12 @@ pair<bool,long> SessionHandler::run(SPRequest& request, bool isHandler) const
         else {
             count += a->second->getSerializedValues().size();
         }
+        key = a->first;
     }
 
     if (!m_values && !attributes.empty())
         s << count << " value(s)" << endl;
 
     s << "</pre></body></html>";
-    request.setContentType("text/html; charset=UTF-8");
-    request.setResponseHeader("Expires","Wed, 01 Jan 1997 12:00:00 GMT");
-    request.setResponseHeader("Cache-Control","private,no-store,no-cache,max-age=0");
     return make_pair(true, request.sendResponse(s));
 }

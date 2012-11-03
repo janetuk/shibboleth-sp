@@ -76,46 +76,64 @@
   #define SHIBSP_EXCEPTIONAPI(api)
 #endif
 
-#ifdef WIN32
-
-/** Default catalog path on Windows. */
-# define SHIBSP_SCHEMAS "c:/opt/shibboleth-sp/share/xml/xmltooling/catalog.xml;c:/opt/shibboleth-sp/share/xml/opensaml/saml20-catalog.xml;c:/opt/shibboleth-sp/share/xml/opensaml/saml11-catalog.xml;c:/opt/shibboleth-sp/share/xml/shibboleth/catalog.xml"
-
-/** Default name of configuration file on Windows. */
-# define SHIBSP_CONFIG "shibboleth2.xml"
-
 /**
  * Controls default logging level of console tools and other situations
  * where fully-configured logging isn't used.
  */
-#define SHIBSP_LOGGING "console.logger"
+#define SHIBSP_LOGGING  "console.logger"
 
-/** Default prefix for installation (used to resolve relative paths). */
-#define SHIBSP_PREFIX  "c:/opt/shibboleth-sp"
+/** Default name of SP in-process logging config file. */
+#define SHIBSP_INPROC_LOGGING "native.logger"
 
-/** Library directory for installation (used to resolve relative paths). */
-#define SHIBSP_LIBDIR  "lib"
-
-/** Log directory for installation (used to resolve relative paths). */
-#define SHIBSP_LOGDIR  "var/log"
-
-/** Configuration directory for installation (used to resolve relative paths). */
-#define SHIBSP_CFGDIR  "etc"
-
-/** Runtime state directory for installation (used to resolve relative paths). */
-#define SHIBSP_RUNDIR  "var/run"
-
-/** XML directory for installation (used to resolve relative paths). */
-#define SHIBSP_XMLDIR  "share/xml"
-
-#else
-# include <shibsp/paths.h>
-#endif
+/** Default name of SP out-of-process logging config file. */
+#define SHIBSP_OUTOFPROC_LOGGING "shibd.logger"
 
 /** Logging category for Service Provider functions. */
 #define SHIBSP_LOGCAT "Shibboleth"
 
 /** Logging category for Service Provider auditing. */
 #define SHIBSP_TX_LOGCAT "Shibboleth-TRANSACTION"
+
+/** Default name of configuration file. */
+# define SHIBSP_CONFIG  "shibboleth2.xml"
+
+#ifdef WIN32
+
+/** Default catalog path on Windows. */
+# define SHIBSP_SCHEMAS "%PROGRAMDATA%/Shibboleth/SP/xml/xmltooling/catalog.xml;%PROGRAMDATA%/Shibboleth/SP/xml/opensaml/saml20-catalog.xml;%PROGRAMDATA%/Shibboleth/SP/xml/opensaml/saml11-catalog.xml;%PROGRAMDATA%/Shibboleth/SP/xml/shibboleth/catalog.xml"
+
+/** Default prefix for installation (used to resolve relative paths). */
+#define SHIBSP_PREFIX   "c:/opt/shibboleth-sp"
+
+#ifdef _WIN64
+
+/** Library directory for installation (used to resolve relative paths). */
+#define SHIBSP_LIBDIR   "lib64"
+
+#else
+
+/** Library directory for installation (used to resolve relative paths). */
+#define SHIBSP_LIBDIR   "lib"
+
+#endif
+
+/** Log directory for installation (used to resolve relative paths). */
+#define SHIBSP_LOGDIR   "var/log"
+
+/** Configuration directory for installation (used to resolve relative paths). */
+#define SHIBSP_CFGDIR   "etc"
+
+/** Runtime state directory for installation (used to resolve relative paths). */
+#define SHIBSP_RUNDIR   "var/run"
+
+/** Cache directory for installation (used to resolve relative paths). */
+#define SHIBSP_CACHEDIR "var/cache"
+
+/** XML directory for installation (used to resolve relative paths). */
+#define SHIBSP_XMLDIR   "share/xml"
+
+#else
+# include <shibsp/paths.h>
+#endif
 
 #endif /* __shibsp_base_h__ */

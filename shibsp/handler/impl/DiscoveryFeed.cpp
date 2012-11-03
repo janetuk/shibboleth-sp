@@ -49,6 +49,7 @@ using namespace shibsp;
 #ifndef SHIBSP_LITE
 using namespace opensaml::saml2md;
 using namespace opensaml;
+using namespace boost;
 #endif
 using namespace xmltooling;
 using namespace std;
@@ -94,7 +95,7 @@ namespace shibsp {
         // A queue of feed files, linked to the last time of "access".
         // Each filename is also a cache tag.
         mutable queue< pair<string,time_t> > m_feedQueue;
-        Mutex* m_feedLock;
+        scoped_ptr<Mutex> m_feedLock;
 #endif
     };
 
@@ -111,9 +112,6 @@ namespace shibsp {
 
 DiscoveryFeed::DiscoveryFeed(const DOMElement* e, const char* appId)
     : AbstractHandler(e, Category::getInstance(SHIBSP_LOGCAT".DiscoveryFeed"), &g_Blocker), m_cacheToClient(false)
-#ifndef SHIBSP_LITE
-    , m_feedLock(nullptr)
-#endif
 {
     pair<bool,const char*> prop = getString("Location");
     if (!prop.first)
@@ -129,10 +127,10 @@ DiscoveryFeed::DiscoveryFeed(const DOMElement* e, const char* appId)
         prop = getString("dir");
         if (prop.first)
             m_dir = prop.second;
-        XMLToolingConfig::getConfig().getPathResolver()->resolve(m_dir, PathResolver::XMLTOOLING_RUN_FILE);
+        XMLToolingConfig::getConfig().getPathResolver()->resolve(m_dir, PathResolver::XMLTOOLING_CACHE_FILE);
         m_log.info("feed files will be cached in %s", m_dir.c_str());
 #ifndef SHIBSP_LITE
-        m_feedLock = Mutex::create();
+        m_feedLock.reset(Mutex::create());
 #endif
     }
 }
@@ -149,7 +147,6 @@ DiscoveryFeed::~DiscoveryFeed()
             remove(fname.c_str());
             m_feedQueue.pop();
         }
-        delete m_feedLock;
     }
 #endif
 }
@@ -229,7 +226,7 @@ pair<bool,long> DiscoveryFeed::run(SPRequest& request, bool isHandler) const
         request.setContentType("application/json");
         return make_pair(true, request.sendResponse(feed));
     }
-    catch (exception& ex) {
+    catch (std::exception& ex) {
         request.log(SPRequest::SPError, string("error while processing request:") + ex.what());
         istringstream msg("Discovery Request Failed");
         return make_pair(true, request.sendResponse(msg, HTTPResponse::XMLTOOLING_HTTP_STATUS_ERROR));
@@ -278,7 +275,7 @@ void DiscoveryFeed::feedToFile(const Application& application, string& cacheTag)
 #ifndef SHIBSP_LITE
     m_log.debug("processing discovery feed request");
 
-    DiscoverableMetadataProvider* m=dynamic_cast<DiscoverableMetadataProvider*>(application.getMetadataProvider(false));
+    DiscoverableMetadataProvider* m = dynamic_cast<DiscoverableMetadataProvider*>(application.getMetadataProvider(false));
     if (!m)
         m_log.warn("MetadataProvider missing or does not support discovery feed");
     Locker locker(m);
@@ -331,7 +328,7 @@ void DiscoveryFeed::feedToStream(const Application& application, string& cacheTa
 #ifndef SHIBSP_LITE
     m_log.debug("processing discovery feed request");
 
-    DiscoverableMetadataProvider* m=dynamic_cast<DiscoverableMetadataProvider*>(application.getMetadataProvider(false));
+    DiscoverableMetadataProvider* m = dynamic_cast<DiscoverableMetadataProvider*>(application.getMetadataProvider(false));
     if (!m)
         m_log.warn("MetadataProvider missing or does not support discovery feed");
     Locker locker(m);

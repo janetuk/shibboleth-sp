@@ -1,13 +1,14 @@
-Name:		@PACKAGE_NAME@
+Name:		shibboleth-sp
 Version:	@PACKAGE_VERSION@
 Release:	1
 Summary:	Open source system for attribute-based Web SSO
 Group:		Productivity/Networking/Security
-Vendor:		Internet2
+Vendor:		Shibboleth Consortium
 License:	Apache 2.0
-URL:		http://shibboleth.internet2.edu/
-Source:		%{name}-sp-%{version}.tar.gz
+URL:		http://shibboleth.net/
+Source:		%{name}-%{version}.tar.gz
 BuildRoot:	%{_tmppath}/%{name}-%{version}-root
+Obsoletes:	@PACKAGE_NAME@ < %{version}-%{release}
 Requires:	openssl
 PreReq:		xmltooling-schemas, opensaml-schemas
 %if 0%{?suse_version} > 1030 && 0%{?suse_version} < 1130
@@ -22,15 +23,15 @@ BuildRequires:	libsaml-devel >= 2.5
 BuildRequires: krb5-moonshot-devel
 
 %{?_with_log4cpp:BuildRequires: liblog4cpp-devel >= 1.0}
-%{!?_with_log4cpp:BuildRequires: liblog4shib-devel}
-%if 0%{?rhel} >= 6 || 0%{?centos_version} >= 600
-Requires:		libcurl-openssl >= 7.21.7
-BuildRequires:	chrpath
-%endif
+%{!?_with_log4cpp:BuildRequires: liblog4shib-devel >= 1.0.4}
 BuildRequires:  gcc-c++, zlib-devel, boost-devel >= 1.32.0
 %{!?_without_doxygen:BuildRequires: doxygen}
 %{!?_without_odbc:BuildRequires:unixODBC-devel}
 %{?_with_fastcgi:BuildRequires: fcgi-devel}
+%if 0%{?centos_version} >= 600
+BuildRequires:	libmemcached-devel
+%endif
+%{?_with_memcached:BuildRequires: libmemcached-devel}
 %if "%{_vendor}" == "redhat"
 %{!?_without_builtinapache:BuildRequires: httpd-devel}
 BuildRequires: redhat-rpm-config
@@ -45,9 +46,9 @@ Requires(pre): pwdutils
 
 %define runuser shibd
 %if "%{_vendor}" == "suse"
-%define pkgdocdir %{_docdir}/%{name}
+%define pkgdocdir %{_docdir}/shibboleth
 %else
-%define pkgdocdir %{_docdir}/%{name}-%{version}
+%define pkgdocdir %{_docdir}/shibboleth-%{version}
 %endif
 
 %description
@@ -62,6 +63,7 @@ daemon, default plugins, and Apache module(s).
 Summary:	Shibboleth Development Headers
 Group:		Development/Libraries/C and C++
 Requires:	%{name} = %{version}-%{release}
+Obsoletes:	shibboleth-devel < %{version}-%{release}
 %if 0%{?suse_version} > 1030 && 0%{?suse_version} < 1130
 Requires:	libXerces-c-devel >= 2.8.0
 %else
@@ -71,7 +73,7 @@ Requires: 	libxml-security-c-devel >= 1.4.0
 Requires: 	libxmltooling-devel >= 1.5
 Requires: 	libsaml-devel >= 2.5
 %{?_with_log4cpp:Requires: liblog4cpp-devel >= 1.0}
-%{!?_with_log4cpp:Requires: liblog4shib-devel}
+%{!?_with_log4cpp:Requires: liblog4shib-devel >= 1.0.4}
 
 %description devel
 Shibboleth is a Web Single Sign-On implementations based on OpenSAML
@@ -92,20 +94,23 @@ This package includes files needed for development with Shibboleth.
 
 %if "%{_vendor}" == "suse"
 	%{__sed} -i "s/\/var\/log\/httpd/\/var\/log\/apache2/g" \
-		$RPM_BUILD_ROOT%{_sysconfdir}/%{name}/native.logger
+		$RPM_BUILD_ROOT%{_sysconfdir}/shibboleth/native.logger
 %endif
 
 # Plug the SP into the built-in Apache on a recognized system.
 touch rpm.filelist
 APACHE_CONFIG="no"
-if [ -f $RPM_BUILD_ROOT%{_libdir}/%{name}/mod_shib_13.so ] ; then
+if [ -f $RPM_BUILD_ROOT%{_libdir}/shibboleth/mod_shib_13.so ] ; then
 	APACHE_CONFIG="apache.config"
 fi
-if [ -f $RPM_BUILD_ROOT%{_libdir}/%{name}/mod_shib_20.so ] ; then
+if [ -f $RPM_BUILD_ROOT%{_libdir}/shibboleth/mod_shib_20.so ] ; then
 	APACHE_CONFIG="apache2.config"
 fi
-if [ -f $RPM_BUILD_ROOT%{_libdir}/%{name}/mod_shib_22.so ] ; then
+if [ -f $RPM_BUILD_ROOT%{_libdir}/shibboleth/mod_shib_22.so ] ; then
 	APACHE_CONFIG="apache22.config"
+fi
+if [ -f $RPM_BUILD_ROOT%{_libdir}/shibboleth/mod_shib_24.so ] ; then
+	APACHE_CONFIG="apache24.config"
 fi
 %{?_without_builtinapache:APACHE_CONFIG="no"}
 if [ "$APACHE_CONFIG" != "no" ] ; then
@@ -118,7 +123,7 @@ if [ "$APACHE_CONFIG" != "no" ] ; then
 	fi
 	if [ "$APACHE_CONFD" != "no" ] ; then
 		%{__mkdir} -p $RPM_BUILD_ROOT$APACHE_CONFD
-		%{__cp} -p $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/$APACHE_CONFIG $RPM_BUILD_ROOT$APACHE_CONFD/shib.conf 
+		%{__cp} -p $RPM_BUILD_ROOT%{_sysconfdir}/shibboleth/$APACHE_CONFIG $RPM_BUILD_ROOT$APACHE_CONFD/shib.conf 
 		echo "%config(noreplace) $APACHE_CONFD/shib.conf" >> rpm.filelist
 	fi
 fi
@@ -143,23 +148,12 @@ if [ "$SYSCONFIG_SHIBD" != "no" ] ; then
 # User account for shibd
 SHIBD_USER=%{runuser}
 EOF
-	%if 0%{?rhel} >= 6 || 0%{?centos_version} >= 600
-		cat >> $SYSCONFIG_SHIBD <<EOF
-
-# Override OS-supplied libcurl
-export LD_LIBRARY_PATH=/opt/shibboleth/%{_lib}
-EOF
-		# Strip existing rpath to libcurl.
-		chrpath -d $RPM_BUILD_ROOT%{_sbindir}/shibd
-		chrpath -d $RPM_BUILD_ROOT%{_bindir}/mdquery
-		chrpath -d $RPM_BUILD_ROOT%{_bindir}/resolvertest
-	%endif
 fi
 
 %if "%{_vendor}" == "redhat" || "%{_vendor}" == "suse"
 	# %{_initddir} not yet in RHEL5, use deprecated %{_initrddir}
 	install -d -m 0755 $RPM_BUILD_ROOT%{_initrddir}
-	install -m 0755 $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/shibd-%{_vendor} $RPM_BUILD_ROOT%{_initrddir}/shibd
+	install -m 0755 $RPM_BUILD_ROOT%{_sysconfdir}/shibboleth/shibd-%{_vendor} $RPM_BUILD_ROOT%{_initrddir}/shibd
 %if "%{_vendor}" == "suse"
 	install -d -m 0755 $RPM_BUILD_ROOT/%{_sbindir}
 	%{__ln_s} -f %{_initrddir}/shibd $RPM_BUILD_ROOT%{_sbindir}/rcshibd
@@ -175,7 +169,7 @@ fi
 %pre
 getent group %{runuser} >/dev/null || groupadd -r %{runuser}
 getent passwd %{runuser} >/dev/null || useradd -r -g %{runuser} \
-	-d  %{_localstatedir}/run/%{name} -s /sbin/nologin -c "Shibboleth SP daemon" %{runuser}
+	-d  %{_localstatedir}/run/shibboleth -s /sbin/nologin -c "Shibboleth SP daemon" %{runuser}
 exit 0
 
 %post
@@ -184,7 +178,7 @@ exit 0
 %endif
 
 # Key generation or ownership fix
-cd %{_sysconfdir}/%{name}
+cd %{_sysconfdir}/shibboleth
 if [ -f sp-key.pem ] ; then
 	%{__chown} %{runuser}:%{runuser} sp-key.pem sp-cert.pem 2>/dev/null || :
 else
@@ -192,7 +186,7 @@ else
 fi
 
 # Fix ownership of log files (even on new installs, if they're left from an older one).
-%{__chown} %{runuser}:%{runuser} %{_localstatedir}/log/%{name}/* 2>/dev/null || :
+%{__chown} %{runuser}:%{runuser} %{_localstatedir}/log/shibboleth/* 2>/dev/null || :
 
 %if "%{_vendor}" == "redhat"
 	if [ "$1" -gt "1" ] ; then
@@ -216,15 +210,6 @@ fi
 
 	# This adds the proper /etc/rc*.d links for the script
 	/sbin/chkconfig --add shibd
-
-	# On upgrade, restart components if they're already running.
-	# This gets repeated now down in %postun, and the next release
-	# should remove this copy. If we yank it now, we'll break upgrades.
-	if [ "$1" -gt "1" ] ; then
-		/etc/init.d/shibd status 1>/dev/null && /etc/init.d/shibd restart 1>/dev/null
-		%{!?_without_builtinapache:/etc/init.d/httpd status 1>/dev/null && /etc/init.d/httpd restart 1>/dev/null}
-		exit 0
-	fi
 %endif
 %if "%{_vendor}" == "suse"
 	# This adds the proper /etc/rc*.d links for the script
@@ -274,8 +259,8 @@ exit 0
 # ugly hack if init script got removed during %postun by upgraded (buggy/2.1) package
 %if "%{_vendor}" == "redhat"
 	if [ ! -f %{_initrddir}/shibd ] ; then
-		if [ -f %{_sysconfdir}/%{name}/shibd-%{_vendor} ] ; then
-			%{__cp} -p %{_sysconfdir}/%{name}/shibd-%{_vendor} %{_initrddir}/shibd
+		if [ -f %{_sysconfdir}/shibboleth/shibd-%{_vendor} ] ; then
+			%{__cp} -p %{_sysconfdir}/shibboleth/shibd-%{_vendor} %{_initrddir}/shibd
 			%{__chmod} 755 %{_initrddir}/shibd
 			/sbin/chkconfig --add shibd
 	fi
@@ -289,31 +274,31 @@ fi
 %{_bindir}/resolvertest
 %{_libdir}/libshibsp.so.*
 %{_libdir}/libshibsp-lite.so.*
-%dir %{_libdir}/%{name}
-%{_libdir}/%{name}/*
-%exclude %{_libdir}/%{name}/*.la
-%attr(0750,%{runuser},%{runuser}) %dir %{_localstatedir}/log/%{name}
-%attr(0755,%{runuser},%{runuser}) %dir %{_localstatedir}/run/%{name}
-%dir %{_datadir}/xml/%{name}
-%{_datadir}/xml/%{name}/*
-%dir %{_datadir}/%{name}
-%{_datadir}/%{name}/*
-%dir %{_sysconfdir}/%{name}
-%config(noreplace) %{_sysconfdir}/%{name}/*.xml
-%config(noreplace) %{_sysconfdir}/%{name}/*.html
-%config(noreplace) %{_sysconfdir}/%{name}/*.logger
+%dir %{_libdir}/shibboleth
+%{_libdir}/shibboleth/*
+%attr(0750,%{runuser},%{runuser}) %dir %{_localstatedir}/log/shibboleth
+%attr(0755,%{runuser},%{runuser}) %dir %{_localstatedir}/run/shibboleth
+%attr(0755,%{runuser},%{runuser}) %dir %{_localstatedir}/cache/shibboleth
+%dir %{_datadir}/xml/shibboleth
+%{_datadir}/xml/shibboleth/*
+%dir %{_datadir}/shibboleth
+%{_datadir}/shibboleth/*
+%dir %{_sysconfdir}/shibboleth
+%config(noreplace) %{_sysconfdir}/shibboleth/*.xml
+%config(noreplace) %{_sysconfdir}/shibboleth/*.html
+%config(noreplace) %{_sysconfdir}/shibboleth/*.logger
 %if "%{_vendor}" == "redhat" || "%{_vendor}" == "suse"
 %config %{_initrddir}/shibd
 %endif
 %if "%{_vendor}" == "suse"
 %{_sbindir}/rcshibd
 %endif
-%{_sysconfdir}/%{name}/*.dist
-%{_sysconfdir}/%{name}/apache*.config
-%{_sysconfdir}/%{name}/shibd-*
-%attr(0755,root,root) %{_sysconfdir}/%{name}/keygen.sh
-%attr(0755,root,root) %{_sysconfdir}/%{name}/metagen.sh
-%{_sysconfdir}/%{name}/*.xsl
+%{_sysconfdir}/shibboleth/*.dist
+%{_sysconfdir}/shibboleth/apache*.config
+%{_sysconfdir}/shibboleth/shibd-*
+%attr(0755,root,root) %{_sysconfdir}/shibboleth/keygen.sh
+%attr(0755,root,root) %{_sysconfdir}/shibboleth/metagen.sh
+%{_sysconfdir}/shibboleth/*.xsl
 %doc %{pkgdocdir}
 %exclude %{pkgdocdir}/api
 
@@ -325,7 +310,7 @@ fi
 %doc %{pkgdocdir}/api
 
 %changelog
-* Wed Dec 14 2011  Scott Cantor  <cantor.2@osu.edu>  - 2.5-1
+* Thu Mar 1 2012  Scott Cantor  <cantor.2@osu.edu>  - 2.5-1
 - Move logo and stylesheet to version-independent tree
 - Make shib.conf noreplace
 - Post-fixup of Alias commands in older shib.conf
@@ -333,6 +318,9 @@ fi
 - Move init customizations to /etc/sysconfig/shibd
 - Copy shibd restart for Red Hat to postun
 - Add boost-devel dependency
+- Build memcache plugin on RH6
+- Add cachedir to install
+- Add Apache 2.4 to install
 
 * Sun Jun 26 2011  Scott Cantor  <cantor.2@osu.edu>  - 2.4.3-1
 - Log files shouldn't be world readable.

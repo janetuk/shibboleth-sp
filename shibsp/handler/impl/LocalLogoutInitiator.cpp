@@ -33,6 +33,10 @@
 #include "handler/AbstractHandler.h"
 #include "handler/LogoutInitiator.h"
 
+#ifndef SHIBSP_LITE
+using namespace boost;
+#endif
+
 using namespace shibsp;
 using namespace xmltooling;
 using namespace std;
@@ -108,7 +112,7 @@ pair<bool,long> LocalLogoutInitiator::run(SPRequest& request, bool isHandler) co
         try {
             session = request.getSession(false, true, false);  // don't cache it and ignore all checks
         }
-        catch (exception& ex) {
+        catch (std::exception& ex) {
             m_log.error("error accessing current session: %s", ex.what());
         }
         return doRequest(request.getApplication(), request, request, session);
@@ -116,6 +120,7 @@ pair<bool,long> LocalLogoutInitiator::run(SPRequest& request, bool isHandler) co
     else {
         // When not out of process, we remote the request.
         vector<string> headers(1,"Cookie");
+        headers.push_back("User-Agent");
         DDF out,in = wrap(request,&headers);
         DDFJanitor jin(in), jout(out);
         out=request.getServiceProvider().getListenerService()->send(in);
@@ -140,23 +145,23 @@ void LocalLogoutInitiator::receive(DDF& in, ostream& out)
     }
 
     // Unpack the request.
-    auto_ptr<HTTPRequest> req(getRequest(in));
+    scoped_ptr<HTTPRequest> req(getRequest(in));
 
     // Set up a response shim.
     DDF ret(nullptr);
     DDFJanitor jout(ret);
-    auto_ptr<HTTPResponse> resp(getResponse(ret));
+    scoped_ptr<HTTPResponse> resp(getResponse(ret));
 
     Session* session = nullptr;
     try {
-         session = app->getServiceProvider().getSessionCache()->find(*app, *req.get(), nullptr, nullptr);
+         session = app->getServiceProvider().getSessionCache()->find(*app, *req, nullptr, nullptr);
     }
-    catch (exception& ex) {
+    catch (std::exception& ex) {
         m_log.error("error accessing current session: %s", ex.what());
     }
 
     // This is the "last chance" handler so even without a session, we "complete" the logout.
-    doRequest(*app, *req.get(), *resp.get(), session);
+    doRequest(*app, *req, *resp, session);
 
     out << ret;
 #else
@@ -169,18 +174,21 @@ pair<bool,long> LocalLogoutInitiator::doRequest(
     ) const
 {
     if (session) {
+        // Guard the session in case of exception.
+        Locker locker(session, false);
+
         // Do back channel notification.
         bool result;
         vector<string> sessions(1, session->getID());
         result = notifyBackChannel(application, httpRequest.getRequestURL(), sessions, true);
 #ifndef SHIBSP_LITE
-        auto_ptr<LogoutEvent> logout_event(newLogoutEvent(application, &httpRequest, session));
-        if (logout_event.get()) {
+        scoped_ptr<LogoutEvent> logout_event(newLogoutEvent(application, &httpRequest, session));
+        if (logout_event) {
             logout_event->m_logoutType = result ? LogoutEvent::LOGOUT_EVENT_LOCAL : LogoutEvent::LOGOUT_EVENT_PARTIAL;
             application.getServiceProvider().getTransactionLog()->write(*logout_event);
         }
 #endif
-        session->unlock();
+        locker.assign();    // unlock the session
         application.getServiceProvider().getSessionCache()->remove(application, httpRequest, &httpResponse);
         if (!result)
             return sendLogoutPage(application, httpRequest, httpResponse, "partial");
@@ -189,7 +197,13 @@ pair<bool,long> LocalLogoutInitiator::doRequest(
     // Route back to return location specified, or use the local template.
     const char* dest = httpRequest.getParameter("return");
     if (dest) {
-        limitRelayState(m_log, application, httpRequest, dest);
+        // Relative URLs get promoted, absolutes get validated.
+        if (*dest == '/') {
+            string d(dest);
+            httpRequest.absolutize(d);
+            return make_pair(true, httpResponse.sendRedirect(d.c_str()));
+        }
+        application.limitRedirect(httpRequest, dest);
         return make_pair(true, httpResponse.sendRedirect(dest));
     }
     return sendLogoutPage(application, httpRequest, httpResponse, "local");

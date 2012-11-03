@@ -76,6 +76,7 @@ handinclude_HEADERS = \
 	handler/LogoutHandler.h \
 	handler/LogoutInitiator.h \
 	handler/RemotedHandler.h \
+    handler/SecuredHandler.h \
 	handler/SessionInitiator.h
 
 liteinclude_HEADERS = \
@@ -124,18 +125,18 @@ common_sources = \
 	handler/impl/AbstractHandler.cpp \
 	handler/impl/AssertionConsumerService.cpp \
 	handler/impl/AssertionLookup.cpp \
+    handler/impl/AttributeCheckerHandler.cpp \
 	handler/impl/ChainingLogoutInitiator.cpp \
 	handler/impl/ChainingSessionInitiator.cpp \
 	handler/impl/CookieSessionInitiator.cpp \
 	handler/impl/DiscoveryFeed.cpp \
+    handler/impl/ExternalAuthHandler.cpp \
 	handler/impl/FormSessionInitiator.cpp \
 	handler/impl/LocalLogoutInitiator.cpp \
 	handler/impl/LogoutHandler.cpp \
 	handler/impl/LogoutInitiator.cpp \
 	handler/impl/MetadataGenerator.cpp \
 	handler/impl/RemotedHandler.cpp \
-	handler/impl/StatusHandler.cpp \
-	handler/impl/SessionHandler.cpp \
 	handler/impl/SAML1Consumer.cpp \
 	handler/impl/SAML2Consumer.cpp \
 	handler/impl/SAML2ArtifactResolution.cpp \
@@ -144,8 +145,11 @@ common_sources = \
 	handler/impl/SAML2NameIDMgmt.cpp \
 	handler/impl/SAML2SessionInitiator.cpp \
 	handler/impl/SAMLDSSessionInitiator.cpp \
+    handler/impl/SecuredHandler.cpp \
+	handler/impl/SessionHandler.cpp \
 	handler/impl/SessionInitiator.cpp \
 	handler/impl/Shib1SessionInitiator.cpp \
+	handler/impl/StatusHandler.cpp \
 	handler/impl/TransformSessionInitiator.cpp \
 	handler/impl/WAYFSessionInitiator.cpp \
 	impl/ChainingAccessControl.cpp \
@@ -203,6 +207,10 @@ libshibsp_la_SOURCES = \
 	attribute/filtering/impl/NumberOfAttributeValuesFunctor.cpp \
 	attribute/filtering/impl/AttributeIssuerInEntityGroupFunctor.cpp \
 	attribute/filtering/impl/AttributeRequesterInEntityGroupFunctor.cpp \
+	attribute/filtering/impl/AttributeIssuerEntityAttributeFunctor.cpp \
+	attribute/filtering/impl/AttributeRequesterEntityAttributeFunctor.cpp \
+	attribute/filtering/impl/AttributeIssuerEntityMatcherFunctor.cpp \
+	attribute/filtering/impl/AttributeRequesterEntityMatcherFunctor.cpp \
 	attribute/filtering/impl/AttributeScopeMatchesShibMDScopeFunctor.cpp \
 	attribute/resolver/impl/ChainingAttributeResolver.cpp \
 	attribute/resolver/impl/QueryAttributeResolver.cpp \
@@ -211,6 +219,7 @@ libshibsp_la_SOURCES = \
 	attribute/resolver/impl/ChainingAttributeExtractor.cpp \
 	attribute/resolver/impl/DelegationAttributeExtractor.cpp \
 	attribute/resolver/impl/KeyDescriptorAttributeExtractor.cpp \
+    attribute/resolver/impl/MetadataAttributeExtractor.cpp \
 	attribute/resolver/impl/XMLAttributeExtractor.cpp \
 	binding/impl/ArtifactResolver.cpp \
 	binding/impl/SOAPClient.cpp \
@@ -235,21 +244,23 @@ pkgsysconfdir = $(sysconfdir)/@PACKAGE_NAME@
 pkgxmldir = $(datadir)/xml/@PACKAGE_NAME@
 logdir = ${localstatedir}/log
 rundir = $(localstatedir)/run
+cachedir = $(localstatedir)/cache
 xmldir = $(datadir)/xml
 
 paths.h: ${srcdir}/paths.h.in Makefile ${top_builddir}/config.status
 	rm -f $@.tmp
 	sed < ${srcdir}/$@.in > $@.tmp \
-	    -e 's:@-PREFIX-@:${prefix}:g' \
-        -e 's:@-LIBDIR-@:${libdir}:g' \
-        -e 's:@-SYSCONFDIR-@:${sysconfdir}:g' \
-        -e 's:@-LOGDIR-@:${logdir}:g' \
-        -e 's:@-RUNDIR-@:${rundir}:g' \
-        -e 's:@-XMLDIR-@:${xmldir}:g' \
-	    -e 's:@-PKGSYSCONFDIR-@:${pkgsysconfdir}:g' \
-	    -e 's:@-PKGXMLDIR-@:${pkgxmldir}:g' \
-	    -e 's:@-XMLTOOLINGXMLDIR-@:${XMLTOOLINGXMLDIR}:g' \
-	    -e 's:@-OPENSAMLXMLDIR-@:${OPENSAMLXMLDIR}:g'
+		-e 's:@-PREFIX-@:${prefix}:g' \
+		-e 's:@-LIBDIR-@:${libdir}:g' \
+		-e 's:@-SYSCONFDIR-@:${sysconfdir}:g' \
+		-e 's:@-LOGDIR-@:${logdir}:g' \
+		-e 's:@-RUNDIR-@:${rundir}:g' \
+		-e 's:@-CACHEDIR-@:${cachedir}:g' \
+		-e 's:@-XMLDIR-@:${xmldir}:g' \
+		-e 's:@-PKGSYSCONFDIR-@:${pkgsysconfdir}:g' \
+		-e 's:@-PKGXMLDIR-@:${pkgxmldir}:g' \
+		-e 's:@-XMLTOOLINGXMLDIR-@:${XMLTOOLINGXMLDIR}:g' \
+		-e 's:@-OPENSAMLXMLDIR-@:${OPENSAMLXMLDIR}:g'
 	cmp -s $@ $@.tmp || mv $@.tmp $@
 	rm -f $@.tmp
 
@@ -262,7 +273,7 @@ EXTRA_DIST = \
 	shibsp.vcxproj.filters \
 	shibsp-lite.vcxproj.filters \
 	config_pub.h.in \
-    config_pub_win32.h\
+	config_pub_win32.h\
 	paths.h.in \
 	resource.h \
 	shibsp.rc

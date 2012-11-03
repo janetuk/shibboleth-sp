@@ -1,5 +1,5 @@
 AC_PREREQ([2.50])
-AC_INIT([shibboleth],[2.5],[https://issues.shibboleth.net/],[shibboleth])
+AC_INIT([shibboleth],[2.5.0],[https://issues.shibboleth.net/],[shibboleth-sp])
 AC_CONFIG_SRCDIR(shibsp)
 AC_CONFIG_AUX_DIR(build-aux)
 AC_CONFIG_MACRO_DIR(m4)
@@ -77,8 +77,10 @@ AC_FUNC_STRFTIME
 AC_FUNC_STRERROR_R
 AC_CHECK_HEADERS([sys/utsname.h grp.h pwd.h])
 AC_CHECK_HEADERS([sys/socket.h], [AC_DEFINE([SHIBSP_HAVE_SYS_SOCKET_H],[1],[Define to 1 if you have the <sys/socket> header file.])], [])
-AC_CHECK_FUNCS([strchr strdup strstr timegm gmtime_r strtok_r strcasecmp getpwnam getgrnam])
+AC_CHECK_FUNCS([strchr strdup strstr timegm gmtime_r localtime_r strtok_r strcasecmp getpwnam getgrnam])
 AC_CHECK_TYPES([struct sockaddr_storage], [], [], [[#include <sys/socket.h>]])
+AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [[#include <sys/socket.h>]])
+
 
 # checks for pthreads
 ACX_PTHREAD([enable_threads="pthread"],[enable_threads="no"])
@@ -120,6 +122,16 @@ AC_LANG([C++])
 # C++ requirements
 AC_CXX_NAMESPACES
 AC_CXX_REQUIRE_STL
+
+# Boost
+BOOST_REQUIRE
+BOOST_BIND
+BOOST_LAMBDA
+BOOST_PTR_CONTAINER
+BOOST_SMART_PTR
+BOOST_STRING_ALGO
+BOOST_TUPLE
+CPPFLAGS="$BOOST_CPPFLAGS $CPPFLAGS"
 
 # Thank you Solaris, really.
 AC_MSG_CHECKING(for ctime_r)
@@ -501,6 +513,9 @@ if test "$WANT_MEMCACHED" != "no"; then
     fi
     AC_CHECK_HEADER([libmemcached/memcached.h],,
         AC_MSG_ERROR([unable to find Memcached header files]))
+    AC_CHECK_DECL([memcached_last_error_message],
+        [AC_DEFINE([HAVE_MEMCACHED_LAST_ERROR_MESSAGE],[1],[Define to 1 if libmemcached supports error handling function.])],,
+        [#include <libmemcached/memcached.h>])
     MEMCACHED_LIBS="-lmemcached"
 fi
 
@@ -656,7 +671,7 @@ if test "$WANT_APACHE_20" = "yes" ; then
     AC_ARG_WITH(apxs2, 
         AS_HELP_STRING([--with-apxs2=FILE],[Specifies where to find the Apache 2.0 apxs script.]),
         [
-        AC_MSG_CHECKING(for user-specified Apache2 apxs name/location)
+        AC_MSG_CHECKING(for user-specified Apache 2.0 apxs name/location)
         if test "$withval" != "no" ; then
           if test "$withval" != "yes"; then
             APXS2=$withval
@@ -685,10 +700,10 @@ if test "$WANT_APACHE_20" = "yes" ; then
         fi
         ])
 
-    AC_MSG_CHECKING([to see if Apache2 apxs was located])
+    AC_MSG_CHECKING([to see if Apache 2.0 apxs was located])
     if test ! -f "$APXS2" ; then
         AC_MSG_RESULT(no)
-        AC_MSG_ERROR([Unable to locate Apache2 apxs script. An Apache development package may be missing from your server, or you may need to use the --with-apxs2 option.])
+        AC_MSG_ERROR([Unable to locate Apache 2.0 apxs script. An Apache development package may be missing from your server, or you may need to use the --with-apxs2 option.])
     fi
     AC_MSG_RESULT($APXS2)
     AC_SUBST(APXS2)
@@ -721,7 +736,7 @@ if test "$WANT_APACHE_20" = "yes" ; then
         AC_MSG_CHECKING(for user-specified apu-config name/location)
         if test "$withval" != "no" ; then
             if test "$withval" != "yes"; then
-                APR_CONFIG=$withval
+                APU_CONFIG=$withval
                 AC_MSG_RESULT("$withval")
             fi
         fi
@@ -769,7 +784,7 @@ if test "$WANT_APACHE_22" = "yes" ; then
     AC_ARG_WITH(apxs22, 
         AS_HELP_STRING([--with-apxs22=FILE],[Specifies where to find the Apache 2.2 apxs script.]),
         [
-        AC_MSG_CHECKING(for user-specified Apache2.2 apxs name/location)
+        AC_MSG_CHECKING(for user-specified Apache 2.2 apxs name/location)
         if test "$withval" != "no" ; then
           if test "$withval" != "yes"; then
             APXS22=$withval
@@ -798,10 +813,10 @@ if test "$WANT_APACHE_22" = "yes" ; then
         fi
         ])
 
-    AC_MSG_CHECKING([to see if Apache2.2 apxs was located])
+    AC_MSG_CHECKING([to see if Apache 2.2 apxs was located])
     if test ! -f "$APXS22" ; then
         AC_MSG_RESULT(no)
-        AC_MSG_ERROR([Unable to locate Apache2.2 apxs script. An Apache development package may be missing from your server, or you may need to use the --with-apxs22 option.])
+        AC_MSG_ERROR([Unable to locate Apache 2.2 apxs script. An Apache development package may be missing from your server, or you may need to use the --with-apxs22 option.])
     fi
     AC_MSG_RESULT($APXS22)
     AC_SUBST(APXS22)
@@ -857,14 +872,130 @@ fi
 AC_SUBST(APXS22_CFLAGS)
 AC_SUBST(APXS22_INCLUDE)
 
+# Apache 2.4 (mod_shib_24)
+#   --enable-apache-24
+#   --with-apxs24     (DSO build, the normal way, uses apxs to derive build flags)
+#	--with-apr1       (DSO build, APR development package installed separately)
+#   --with-apu1       (DSO build, APR-UTIL development package installed separately)
+
+AC_ARG_ENABLE(apache-24,
+	AS_HELP_STRING([--enable-apache-24],[enable the Apache 2.4 module]),
+	[if test "x$enableval" = "x" ; then
+         WANT_APACHE_24=yes
+	 else
+	     WANT_APACHE_24="$enableval"
+	 fi
+	],[ WANT_APACHE_24=no ])
+AC_MSG_CHECKING(whether to build Apache 2.4 module)
+if test "$WANT_APACHE_24" != yes && test "$WANT_APACHE_24" != no ; then
+    WANT_APACHE_24=yes
+fi
+AC_MSG_RESULT($WANT_APACHE_24)
+
+if test "$WANT_APACHE_24" = "yes" ; then
+    AC_ARG_WITH(apxs24, 
+        AS_HELP_STRING([--with-apxs24=FILE],[Specifies where to find the Apache 2.4 apxs script.]),
+        [
+        AC_MSG_CHECKING(for user-specified Apache 2.4 apxs name/location)
+        if test "$withval" != "no" ; then
+          if test "$withval" != "yes"; then
+            APXS24=$withval
+            AC_MSG_RESULT("$withval")
+          fi
+        fi
+        ],
+        [
+        AC_PATH_PROG(APXS24, apxs2, no)
+        if test "$APXS24" = "no" ; then
+            AC_PATH_PROG(APXS24, apxs, no)
+        fi
+        if test "$APXS24" = "no" ; then
+          for i in /usr/sbin /usr/local/apache2/bin /usr/local/apache/bin ; do
+            if test "$APXS24" = "no" && test -f "$i/apxs2" ; then
+              APXS24="$i/apxs2"
+            fi
+          done
+          if test "$APXS24" = "no" ; then
+            for i in /usr/sbin /usr/local/apache2/bin /usr/local/apache/bin ; do
+              if test "$APXS24" = "no" && test -f "$i/apxs" ; then
+                APXS24="$i/apxs"
+              fi
+            done
+          fi
+        fi
+        ])
+
+    AC_MSG_CHECKING([to see if Apache 2.4 apxs was located])
+    if test ! -f "$APXS24" ; then
+        AC_MSG_RESULT(no)
+        AC_MSG_ERROR([Unable to locate Apache 2.4 apxs script. An Apache development package may be missing from your server, or you may need to use the --with-apxs24 option.])
+    fi
+    AC_MSG_RESULT($APXS24)
+    AC_SUBST(APXS24)
+
+    # If we haven't done this work already for Apache 2.2
+    if test "$WANT_APACHE_22" != "yes" ; then
+        # APR1 settings
+        AC_ARG_WITH(apr1,
+            AS_HELP_STRING([--with-apr1=PATH],[where apr-1-config is installed]),
+            [
+            AC_MSG_CHECKING(for user-specified apr-1-config name/location)
+            if test "$withval" != "no" ; then
+                if test "$withval" != "yes"; then
+                    APR1_CONFIG=$withval
+                    AC_MSG_RESULT("$withval")
+                fi
+            fi
+            ],
+            [
+            AC_PATH_PROG(APR1_CONFIG, apr-1-config,,[`$APXS22 -q SBINDIR`]:[$PATH])
+            ])
+        if test -f "${APR1_CONFIG}"; then
+            APR1_CFLAGS="`${APR1_CONFIG} --cflags` `${APR1_CONFIG} --cppflags` `${APR1_CONFIG} --includes`"
+        else
+            AC_MSG_ERROR([Unable to locate apr-1-config, may need --with-apr1 option.])
+        fi
+
+        # APU1 settings
+        AC_ARG_WITH(apu1,
+            AS_HELP_STRING([--with-apu1=PATH],[where apu-1-config is installed]),
+            [
+            AC_MSG_CHECKING(for user-specified apu-1-config name/location)
+            if test "$withval" != "no" ; then
+                if test "$withval" != "yes"; then
+                    APU1_CONFIG=$withval
+                    AC_MSG_RESULT("$withval")
+                fi
+            fi
+            ],
+            [
+            AC_PATH_PROG(APU1_CONFIG, apu-1-config,,[`$APXS22 -q SBINDIR`]:[$PATH])
+            ])
+        if test -f "${APU1_CONFIG}"; then
+            APU1_CFLAGS="`${APU1_CONFIG} --includes`"
+        else
+            AC_MSG_ERROR([Unable to locate apu-1-config, may need --with-apu1 option.])
+        fi
+    fi
+    
+    # extract settings we need from APXS24 -q
+    APXS24_CC="`$APXS24 -q CC`"
+    APXS24_CFLAGS="`$APXS24 -q CPPFLAGS` `$APXS24 -q CFLAGS` $APR1_CFLAGS $APU1_CFLAGS"
+    APXS24_INCLUDE="`$APXS24 -q INCLUDEDIR`"
+fi
+
+AC_SUBST(APXS24_CFLAGS)
+AC_SUBST(APXS24_INCLUDE)
+
 # always output the Makefile, even if you don't use it
 AC_CONFIG_FILES([apache/Makefile])
 AM_CONDITIONAL(BUILD_AP13,test "$WANT_APACHE_13" = "yes")
 AM_CONDITIONAL(BUILD_AP20,test "$WANT_APACHE_20" = "yes")
 AM_CONDITIONAL(BUILD_AP22,test "$WANT_APACHE_22" = "yes")
+AM_CONDITIONAL(BUILD_AP24,test "$WANT_APACHE_24" = "yes")
 
 # add the apache module to the list of wanted subdirs..
-if test "$WANT_APACHE_13" = "yes" || test "$WANT_APACHE_20" = "yes" || test "$WANT_APACHE_22" = "yes" ; then
+if test "$WANT_APACHE_13" = "yes" || test "$WANT_APACHE_20" = "yes" || test "$WANT_APACHE_22" = "yes" || test "$WANT_APACHE_24" = "yes" ; then
     WANT_SUBDIRS="$WANT_SUBDIRS apache"
 fi
 
@@ -1167,6 +1298,18 @@ if test -n "$APXS22_CC" && test "$APXS22_CC" != "$CC" ; then
   echo ""
   echo "    Current compiler:      $CC"
   echo "   Apache's compiler:      $APXS22_CC"
+  echo ""
+  echo "This could cause problems."
+  echo "=================================================================="
+fi
+
+if test -n "$APXS24_CC" && test "$APXS24_CC" != "$CC" ; then
+  echo "=================================================================="
+  echo "WARNING: You have chosen to compile Apache-2.4 modules with a different"
+  echo "         compiler than the one used to compile Apache."
+  echo ""
+  echo "    Current compiler:      $CC"
+  echo "   Apache's compiler:      $APXS24_CC"
   echo ""
   echo "This could cause problems."
   echo "=================================================================="

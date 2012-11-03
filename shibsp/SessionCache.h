@@ -34,6 +34,7 @@
 #include <string>
 #include <vector>
 #include <ctime>
+#include <xercesc/util/XercesDefs.hpp>
 #include <xmltooling/Lockable.h>
 
 namespace xmltooling {
@@ -47,6 +48,9 @@ namespace opensaml {
     class SAML_API Assertion;
     namespace saml2 {
         class SAML_API NameID;
+    };
+    namespace saml2md {
+        class SAML_API EntityDescriptor;
     };
 };
 #endif

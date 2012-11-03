@@ -231,6 +231,15 @@
     <ClCompile Include="attribute\BinaryAttribute.cpp">
       <Filter>Source Files\attribute</Filter>
     </ClCompile>
+    <ClCompile Include="handler\impl\AttributeCheckerHandler.cpp">
+      <Filter>Source Files\handler\impl</Filter>
+    </ClCompile>
+    <ClCompile Include="handler\impl\SecuredHandler.cpp">
+      <Filter>Source Files\handler\impl</Filter>
+    </ClCompile>
+    <ClCompile Include="handler\impl\ExternalAuthHandler.cpp">
+      <Filter>Source Files\handler\impl</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="remoting\impl\SocketListener.h">
@@ -358,6 +367,9 @@
     </ClInclude>
     <ClInclude Include="attribute\BinaryAttribute.h">
       <Filter>Header Files\attribute</Filter>
+    </ClInclude>
+    <ClInclude Include="handler\SecuredHandler.h">
+      <Filter>Header Files\handler</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

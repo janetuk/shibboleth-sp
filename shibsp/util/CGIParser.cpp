@@ -27,12 +27,14 @@
 #include "internal.h"
 #include "util/CGIParser.h"
 
+#include <boost/bind.hpp>
 #include <xmltooling/XMLToolingConfig.h>
 #include <xmltooling/io/HTTPRequest.h>
 #include <xmltooling/util/URLEncoder.h>
 
 using namespace shibsp;
 using namespace xmltooling;
+using namespace boost;
 using namespace std;
 
 namespace {
@@ -107,9 +109,8 @@ CGIParser::CGIParser(const HTTPRequest& request, bool queryOnly)
 
 CGIParser::~CGIParser()
 {
-    for (multimap<string,char*>::iterator i=kvp_map.begin(); i!=kvp_map.end(); i++)
-        free(i->second);
-}
+    static void (*fn)(void*) = &free;
+    for_each(kvp_map.begin(), kvp_map.end(), boost::bind(fn, boost::bind(&multimap<string,char*>::value_type::second, _1)));}
 
 void CGIParser::parse(const char* pch)
 {

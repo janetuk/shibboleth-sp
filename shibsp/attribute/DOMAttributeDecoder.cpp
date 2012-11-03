@@ -44,8 +44,15 @@ namespace shibsp {
         DOMAttributeDecoder(const DOMElement* e);
         ~DOMAttributeDecoder() {}
 
+        // deprecated method
         Attribute* decode(
             const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty=nullptr, const char* relyingParty=nullptr
+            ) const {
+            return decode(nullptr, ids, xmlObject, assertingParty, relyingParty);
+        }
+
+        Attribute* decode(
+            const GenericRequest*, const vector<string>&, const XMLObject*, const char* assertingParty=nullptr, const char* relyingParty=nullptr
             ) const;
 
     private:
@@ -91,25 +98,23 @@ DOMAttributeDecoder::DOMAttributeDecoder(const DOMElement* e)
 }
 
 Attribute* DOMAttributeDecoder::decode(
-    const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty, const char* relyingParty
+    const GenericRequest* request, const vector<string>& ids, const XMLObject* xmlObject, const char* assertingParty, const char* relyingParty
     ) const
 {
     Category& log = Category::getInstance(SHIBSP_LOGCAT".AttributeDecoder.DOM");
 
-    if (!xmlObject || !XMLString::equals(saml1::Attribute::LOCAL_NAME, xmlObject->getElementQName().getLocalPart())) {
-        log.warn("XMLObject type not recognized by DOMAttributeDecoder, no values returned");
+    if (!xmlObject)
         return nullptr;
-    }
 
     auto_ptr<ExtensibleAttribute> attr(new ExtensibleAttribute(ids, m_formatter.c_str()));
     DDF dest = attr->getValues();
-    vector<XMLObject*>::const_iterator v,stop;
+    vector<XMLObject*> genericObjectWrapper;    // used to support stand-alone object decoding
+    pair<vector<XMLObject*>::const_iterator,vector<XMLObject*>::const_iterator> valrange;
 
     const saml2::Attribute* saml2attr = dynamic_cast<const saml2::Attribute*>(xmlObject);
     if (saml2attr) {
         const vector<XMLObject*>& values = saml2attr->getAttributeValues();
-        v = values.begin();
-        stop = values.end();
+        valrange = valueRange(request, values);
         if (log.isDebugEnabled()) {
             auto_ptr_char n(saml2attr->getName());
             log.debug(
@@ -122,8 +127,7 @@ Attribute* DOMAttributeDecoder::decode(
         const saml1::Attribute* saml1attr = dynamic_cast<const saml1::Attribute*>(xmlObject);
         if (saml1attr) {
             const vector<XMLObject*>& values = saml1attr->getAttributeValues();
-            v = values.begin();
-            stop = values.end();
+            valrange = valueRange(request, values);
             if (log.isDebugEnabled()) {
                 auto_ptr_char n(saml1attr->getAttributeName());
                 log.debug(
@@ -133,20 +137,22 @@ Attribute* DOMAttributeDecoder::decode(
             }
         }
         else {
-            log.warn("XMLObject type not recognized by DOMAttributeDecoder, no values returned");
-            return nullptr;
+            log.debug("decoding arbitrary XMLObject type (%s)", xmlObject->getElementQName().toString().c_str());
+            genericObjectWrapper.push_back(const_cast<XMLObject*>(xmlObject));
+            valrange.first = genericObjectWrapper.begin();
+            valrange.second = genericObjectWrapper.end();
         }
     }
 
-    for (; v!=stop; ++v) {
-        DOMElement* e = (*v)->getDOM();
+    for (; valrange.first != valrange.second; ++valrange.first) {
+        DOMElement* e = (*valrange.first)->getDOM();
         if (e) {
             DDF converted = convert(e, false);
             if (!converted.isnull())
                 dest.add(converted);
         }
         else
-            log.warn("skipping AttributeValue without a backing DOM");
+            log.warn("skipping XMLObject without a backing DOM");
     }
 
     return dest.integer() ? _decode(attr.release()) : nullptr;
@@ -194,7 +200,7 @@ DDF DOMAttributeDecoder::convert(DOMElement* e, bool nameit) const
     DOMElement* child = XMLHelper::getFirstChildElement(e);
     if (!child && e->hasChildNodes() && e->getFirstChild()->getNodeType() == DOMNode::TEXT_NODE) {
         // Attach a _text member if a text node is present.
-        obj.addmember("_string").string(toUTF8(e->getFirstChild()->getNodeValue(), true), false);
+        obj.addmember("_string").string(toUTF8(e->getFirstChild()->getTextContent(), true), false);
     }
     else {
         while (child) {

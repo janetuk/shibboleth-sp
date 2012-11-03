@@ -113,7 +113,6 @@ TransactionLog::TransactionLog(const char* fmt, const char* absent)
 
 TransactionLog::~TransactionLog()
 {
-    delete m_lock;
 }
 
 Lockable* TransactionLog::lock()
@@ -463,7 +462,7 @@ namespace {
         }
         if (t == 0)
             return false;
-#ifndef HAVE_GMTIME_R
+#ifndef HAVE_LOCALTIME_R
         struct tm* ptime=localtime(&t);
 #else
         struct tm res;
@@ -502,7 +501,7 @@ namespace {
         }
         if (t == 0)
             return false;
-#ifndef HAVE_GMTIME_R
+#ifndef HAVE_LOCALTIME_R
         struct tm* ptime=localtime(&t);
 #else
         struct tm res;
@@ -525,7 +524,7 @@ namespace {
         }
         if (t == 0)
             return false;
-#ifndef HAVE_GMTIME_R
+#ifndef HAVE_LOCALTIME_R
         struct tm* ptime=localtime(&t);
 #else
         struct tm res;
@@ -689,7 +688,7 @@ namespace {
         }
         
         const LogoutEvent* logout = dynamic_cast<const LogoutEvent*>(&e);
-        if (logout && logout->m_session) {
+        if (logout && logout->m_session && logout->m_session->getEntityID()) {
             os << logout->m_session->getEntityID();
             return true;
         }
