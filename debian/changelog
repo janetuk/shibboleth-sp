@@ -3,8 +3,9 @@ shibboleth-sp2 (2.5+dfsg~moonshot5-1) unstable; urgency=low
   * New upstream version based on actual 2.5 release
   * Don't install logo as it disappeared upstream
   * Tighten build-depends
+  * Upstream no longer install plugin .la files, so don't remove them
 
- -- Sam Hartman <hartmans@debian.org>  Sat, 03 Nov 2012 05:37:09 -0400
+ -- Sam Hartman <hartmans@debian.org>  Sat, 03 Nov 2012 05:38:55 -0400
 
 shibboleth-sp2 (2.5+dfsg~moonshot4-1) unstable; urgency=low
 
