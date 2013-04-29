@@ -89,9 +89,9 @@ This package includes files needed for development with Shibboleth.
 
 %build
 %if 0%{?centos_version} >= 600
-	%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{!?_without_memcached:--with-memcached} %{?shib_options} --with-gssapi=%{_prefix}
+	%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{!?_without_memcached:--with-memcached} %{?shib_options} --with-gssapi=%{_prefix} --with-xmltooling=%{_prefix} --with-opensaml=%{_prefix}
 %else
-	%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{?_with_memcached} %{?shib_options} --with-gssapi=%{_prefix}
+	%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{?_with_memcached} %{?shib_options} --with-gssapi=%{_prefix} --with-xmltooling=%{_prefix} --with-opensaml=%{_prefix}
 %endif
 %{__make} pkgdocdir=%{pkgdocdir}
 
