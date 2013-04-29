@@ -20,10 +20,12 @@ BuildRequires:	libxerces-c-devel >= 2.8.0
 BuildRequires:	libxml-security-c-devel >= 1.4.0
 BuildRequires:	libxmltooling-devel >= 1.5
 BuildRequires:	libsaml-devel >= 2.5
-BuildRequires: krb5-moonshot-devel
-
 %{?_with_log4cpp:BuildRequires: liblog4cpp-devel >= 1.0}
 %{!?_with_log4cpp:BuildRequires: liblog4shib-devel >= 1.0.4}
+%if 0%{?rhel} >= 6 || 0%{?centos_version} >= 600
+Requires:		libcurl-openssl >= 7.21.7
+BuildRequires:	chrpath
+%endif
 BuildRequires:  gcc-c++, zlib-devel, boost-devel >= 1.32.0
 %{!?_without_doxygen:BuildRequires: doxygen}
 %{!?_without_odbc:BuildRequires:unixODBC-devel}
@@ -86,7 +88,11 @@ This package includes files needed for development with Shibboleth.
 %setup -q
 
 %build
-%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{?_with_memcached} %{?shib_options} --with-gssapi=%{_prefix} --with-xmltooling=%{_prefix}
+%if 0%{?centos_version} >= 600
+	%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{!?_without_memcached:--with-memcached} %{?shib_options} --with-gssapi=%{_prefix}
+%else
+	%configure %{?_without_odbc:--disable-odbc} %{?_without_adfs:--disable-adfs} %{?_with_fastcgi} %{?_with_memcached} %{?shib_options} --with-gssapi=%{_prefix}
+%endif
 %{__make} pkgdocdir=%{pkgdocdir}
 
 %install
@@ -148,6 +154,17 @@ if [ "$SYSCONFIG_SHIBD" != "no" ] ; then
 # User account for shibd
 SHIBD_USER=%{runuser}
 EOF
+	%if 0%{?rhel} >= 6 || 0%{?centos_version} >= 600
+		cat >> $SYSCONFIG_SHIBD <<EOF
+
+# Override OS-supplied libcurl
+export LD_LIBRARY_PATH=/opt/shibboleth/%{_lib}
+EOF
+		# Strip existing rpath to libcurl.
+		chrpath -d $RPM_BUILD_ROOT%{_sbindir}/shibd
+		chrpath -d $RPM_BUILD_ROOT%{_bindir}/mdquery
+		chrpath -d $RPM_BUILD_ROOT%{_bindir}/resolvertest
+	%endif
 fi
 
 %if "%{_vendor}" == "redhat" || "%{_vendor}" == "suse"
