@@ -13,11 +13,7 @@ Requires:	openssl
 PreReq:		xmltooling-schemas, opensaml-schemas
 %if 0%{?suse_version} > 1030 && 0%{?suse_version} < 1130
 PreReq:		%{insserv_prereq} %{fillup_prereq}
-BuildRequires:	libXerces-c-devel >= 2.8.0
-%else
-BuildRequires:	libxerces-c-devel >= 2.8.0
 %endif
-BuildRequires:	libxml-security-c-devel >= 1.4.0
 BuildRequires:	libxmltooling-devel >= 1.5
 BuildRequires:	libsaml-devel >= 2.5
 %{?_with_log4cpp:BuildRequires: liblog4cpp-devel >= 1.0}
@@ -66,12 +62,6 @@ Summary:	Shibboleth Development Headers
 Group:		Development/Libraries/C and C++
 Requires:	%{name} = %{version}-%{release}
 Obsoletes:	shibboleth-devel < %{version}-%{release}
-%if 0%{?suse_version} > 1030 && 0%{?suse_version} < 1130
-Requires:	libXerces-c-devel >= 2.8.0
-%else
-Requires: 	libxerces-c-devel >= 2.8.0
-%endif
-Requires: 	libxml-security-c-devel >= 1.4.0
 Requires: 	libxmltooling-devel >= 1.5
 Requires: 	libsaml-devel >= 2.5
 %{?_with_log4cpp:Requires: liblog4cpp-devel >= 1.0}
