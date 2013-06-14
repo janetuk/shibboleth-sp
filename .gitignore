@@ -133,6 +133,7 @@
 
 # /msi/WiX
 /msi/WiX/*.wix*
+/msi/WiX/*.user
 /msi/WiX/*.msi
 /msi/WiX/Debug
 /msi/WiX/Release
